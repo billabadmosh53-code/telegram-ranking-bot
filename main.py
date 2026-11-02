@@ -3,11 +3,11 @@ import telebot
 from telebot import types
 from flask import Flask
 
-TOKEN = "9270651831:AAEEwcVyCrwblzlMQv4ExuY-N0sb8ydVl1g"
+TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
 # Render ke port warning ko fix karne ke liye chhota web server
-app = Flask(name)
+app = Flask(__name__)
 
 @app.route('/')
 def home():
@@ -29,10 +29,10 @@ def send_welcome(message):
 @bot.message_handler(commands=['help'])
 def send_help(message):
     help_text = (
-        "🤖 Bot Help Menu:\n\n"
+        "🤖 **Bot Help Menu:**\n\n"
         "• Add me to any group to start counting messages.\n"
-        "• Use /ranking or /top to see the global leaderboard.\n"
-        "• Use /mystats to check your personal stats.\n"
+        "• Use `/ranking` or `/top` to see the global leaderboard.\n"
+        "• Use `/mystats` to check your personal stats.\n"
         "• Use the inline buttons anytime!"
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
@@ -45,7 +45,7 @@ def show_ranking(message):
     
     if chat_id in user_scores and user_scores[chat_id]:
         sorted_users = sorted(user_scores[chat_id].values(), key=lambda x: x['count'], reverse=True)
-        text = "🏆 Global Active Users Ranking:\n\n"
+        text = "🏆 **Global Active Users Ranking:**\n\n"
         
         for i, u in enumerate(sorted_users[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
@@ -60,7 +60,7 @@ def show_ranking(message):
                 break
                 
         text += f"\n-------------------\n"
-        text += f"📍 Your Standing: #{user_rank} | {user_count} msgs"
+        text += f"📍 **Your Standing:** #{user_rank} | {user_count} msgs"
     else:
         text = "No message data yet for this group! Pehle kuch messages bhejiye."
         
@@ -81,7 +81,7 @@ def show_mystats(message):
                 user_rank = i
                 break
 
-        text = f"📊 Your Stats:\n👤 Name: {user_data['name']}\n💬 Total Messages: {user_data['count']}\n🏆 Group Rank: #{user_rank}"
+        text = f"📊 **Your Stats:**\n👤 Name: {user_data['name']}\n💬 Total Messages: {user_data['count']}\n🏆 Group Rank: #{user_rank}"
     else:
         text = "📊 You haven't sent any messages tracked yet in this group!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
@@ -100,3 +100,41 @@ def track_messages(message):
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
         user_scores[chat_id][user_id]['count'] += 1
+
+# Inline buttons handle karne ke liye
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    chat_id = call.message.chat.id
+    user_id = call.from_user.id
+    
+    if call.data == "top":
+        if chat_id in user_scores and user_scores[chat_id]:
+            sorted_users = sorted(user_scores[chat_id].values(), key=lambda x: x['count'], reverse=True)
+            text = "🏆 **Global Active Users Ranking:**\n\n"
+            for i, u in enumerate(sorted_users[:10], 1):
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+                text += f"{medal} {u['name']} — {u['count']} msgs\n"
+        else:
+            text = "No message data yet for this group!"
+        bot.answer_callback_query(call.id, text, show_alert=True)
+        
+    elif call.data == "stats":
+        if chat_id in user_scores and user_id in user_scores[chat_id]:
+            user_data = user_scores[chat_id][user_id]
+            sorted_users = sorted(user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True)
+            user_rank = "N/A"
+            for i, (uid, _) in enumerate(sorted_users, 1):
+                if uid == user_id:
+                    user_rank = i
+                    break
+            text = f"Your Stats:\nName: {user_data['name']}\nMessages: {user_data['count']}\nRank: #{user_rank}"
+        else:
+            text = "You haven't sent any messages tracked yet!"
+        bot.answer_callback_query(call.id, text, show_alert=True)
+
+# Bot aur Flask server ko ek sath chalane ke liye
+if __name__ == "__main__":
+    import threading
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))).start()
+    bot.infinity_polling()
+        

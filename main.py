@@ -58,7 +58,7 @@ def set_afk(message):
         bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
         return
 
-    text_parts = message.text.split(maxsplit=1)
+    text_parts = message.text.split(maxsplit=1) if message.text else []
     reason = text_parts[1] if len(text_parts) > 1 else "Away from keyboard"
         
     afk_users[chat_id][user_id] = {
@@ -117,12 +117,14 @@ def show_mystats(message):
         text = "📊 You haven't sent any messages tracked yet in this group!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda message: True, content_types=['text'])
+# Handle all types of content including text, stickers, animations, etc.
+@bot.message_handler(func=lambda message: True, content_types=['text', 'sticker', 'animation', 'photo', 'video', 'document', 'audio', 'voice'])
 def handle_all_messages(message):
     if message.chat.type in ['group', 'supergroup']:
         chat_id = message.chat.id
         user_id = message.from_user.id
         user_name = message.from_user.first_name
+        msg_text = message.text or message.caption or ""
 
         # --- 1. Message Tracking ---
         if chat_id not in user_scores:
@@ -130,14 +132,14 @@ def handle_all_messages(message):
         if user_id not in user_scores[chat_id]:
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
-        if message.text and message.text.startswith('/afk'):
+        if msg_text.startswith('/afk'):
             pass
         else:
             user_scores[chat_id][user_id]['count'] += 1
 
         # --- 2. AFK Welcome Back (Reset) ---
         if chat_id in afk_users and user_id in afk_users[chat_id]:
-            if message.text and not message.text.startswith('/afk'):
+            if not msg_text.startswith('/afk'):
                 afk_data = afk_users[chat_id].pop(user_id)
                 afk_time_sec = int(time.time() - afk_data['time'])
                 
@@ -150,7 +152,7 @@ def handle_all_messages(message):
 
                 bot.send_message(chat_id, f"👋 Welcome back {user_name}!\nYou were AFK for: {afk_time_str}")
 
-        # --- 3. AFK Reply for Replies ---
+        # --- 3. AFK Reply for Replies (Including Stickers/GIFs responding to AFK users) ---
         if message.reply_to_message:
             replied_user_id = message.reply_to_message.from_user.id
             replied_user_name = message.reply_to_message.from_user.first_name
@@ -158,16 +160,15 @@ def handle_all_messages(message):
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-        # --- 4. Super Flexible AFK Reply for Mentions / Names ---
-        if message.text and chat_id in afk_users:
-            text_lower = message.text.lower()
+        # --- 4. AFK Reply for Mentions / Names ---
+        if chat_id in afk_users:
+            text_lower = msg_text.lower()
             notified = set()
             
             for afk_uid, afk_info in afk_users[chat_id].items():
                 if afk_uid == user_id:
                     continue
                 
-                # Check username match or name match inside text
                 uname = afk_info['username']
                 fname = afk_info['name'].lower()
                 
@@ -214,4 +215,3 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
-    

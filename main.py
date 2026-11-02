@@ -21,13 +21,27 @@ def send_welcome(message):
 def send_help(message):
     help_text = (
         "🤖 **Bot Help Menu:**\n\n"
-        "• Add me to any group.\n"
-        "• I will automatically count messages for ranking.\n"
-        "• Use the inline buttons to check stats and top active users!"
+        "• Add me to any group to start counting messages.\n"
+        "• Use `/ranking` or `/top` to see the leaderboard.\n"
+        "• Use the inline buttons to check your stats anytime!"
     )
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
-# Group messages track karne ke liye (Original chat fight tracking)
+# /ranking ya /top command
+@bot.message_handler(commands=['ranking', 'top'])
+def show_ranking(message):
+    chat_id = message.chat.id
+    if chat_id in user_scores and user_scores[chat_id]:
+        sorted_users = sorted(user_scores[chat_id].values(), key=lambda x: x['count'], reverse=True)
+        text = "🏆 **Top Active Users:**\n\n"
+        for i, u in enumerate(sorted_users[:10], 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {u['name']} — {u['count']} msgs\n"
+    else:
+        text = "No message data yet for this group! Pehle kuch messages bhejiye."
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+# Group messages track karne ke liye (Chat fight message counting)
 @bot.message_handler(func=lambda message: True)
 def track_messages(message):
     if message.chat.type in ['group', 'supergroup']:

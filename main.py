@@ -15,16 +15,16 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is active!")
     def log_message(self, format, *args):
-        return # Logs ko clean rakhne ke liye
+        return
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
 
-# Scores store karne ke liye dictionary
+# Scores store karne ke liye
 user_scores = {}
-# AFK users data store karne ke liye
+# AFK users data store karne ke liye (Format: chat_id -> {user_id: {'name': name, 'username': username, 'reason': reason, 'time': time}})
 afk_users = {}
 
 # /start command
@@ -49,29 +49,27 @@ def send_help(message):
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
-# /afk command (Fixed reason parsing)
+# /afk command
 @bot.message_handler(commands=['afk'])
 def set_afk(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.first_name
+    username = message.from_user.username
     
     if chat_id not in afk_users:
         afk_users[chat_id] = {}
         
-    # Check if user already AFK
     if user_id in afk_users[chat_id]:
         bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
         return
 
-    # Extract exact reason correctly, removing command and bot username if any
     text_parts = message.text.split(maxsplit=1)
-    if len(text_parts) > 1:
-        reason = text_parts[1]
-    else:
-        reason = "Away from keyboard"
+    reason = text_parts[1] if len(text_parts) > 1 else "Away from keyboard"
         
     afk_users[chat_id][user_id] = {
+        'name': user_name,
+        'username': username.lower() if username else None,
         'reason': reason,
         'time': time.time()
     }
@@ -141,7 +139,6 @@ def handle_all_messages(message):
         if user_id not in user_scores[chat_id]:
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
-        # Don't count /afk commands as messages
         if message.text and message.text.startswith('/afk'):
             pass
         else:
@@ -150,7 +147,7 @@ def handle_all_messages(message):
         # --- 2. AFK Welcome Back (Reset) ---
         if chat_id in afk_users and user_id in afk_users[chat_id]:
             if message.text and not message.text.startswith('/afk'):
-                afk_data = afk_users[chat_id].pop(user_id) # Remove from AFK
+                afk_data = afk_users[chat_id].pop(user_id)
                 afk_time_sec = int(time.time() - afk_data['time'])
                 
                 if afk_time_sec < 60:
@@ -170,7 +167,15 @@ def handle_all_messages(message):
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-# Inline buttons handle karne ke liye
+        # --- 4. AFK Reply for @mentions in text ---
+        if message.text and chat_id in afk_users:
+            text_lower = message.text.lower()
+            for afk_uid, afk_info in afk_users[chat_id].items():
+                if afk_info['username'] and f"@{afk_info['username']}" in text_lower:
+                    bot.send_message(chat_id, f"🔇 {afk_info['name']} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
+                    break
+
+# Inline buttons handler
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
@@ -204,3 +209,4 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
+    

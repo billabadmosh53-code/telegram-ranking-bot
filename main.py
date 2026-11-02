@@ -1,17 +1,25 @@
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
 from telebot import types
-from flask import Flask
 
 TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
-# Render ke port warning ko fix karne ke liye chhota web server
-app = Flask(__name__)
+# Render ke port requirement ko poora karne ke liye built-in lightweight server
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is active!")
+    def log_message(self, format, *args):
+        return # Logs ko clean rakhne ke liye
 
-@app.route('/')
-def home():
-    return "Bot is active!"
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    server.serve_forever()
 
 # Scores store karne ke liye dictionary
 user_scores = {}
@@ -132,9 +140,9 @@ def callback_query(call):
             text = "You haven't sent any messages tracked yet!"
         bot.answer_callback_query(call.id, text, show_alert=True)
 
-# Bot aur Flask server ko ek sath chalane ke liye
 if __name__ == "__main__":
-    import threading
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))).start()
+    # Background mein health check server chalana
+    threading.Thread(target=run_server, daemon=True).start()
+    # Bot polling start karna
     bot.infinity_polling()
-        
+    

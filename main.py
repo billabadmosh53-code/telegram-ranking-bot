@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 
-TOKEN = 9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM
+TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
 user_scores = {}

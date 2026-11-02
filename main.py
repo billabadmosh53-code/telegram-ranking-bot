@@ -24,7 +24,7 @@ def run_server():
 
 # Scores store karne ke liye
 user_scores = {}
-# AFK users data store karne ke liye (Format: chat_id -> {user_id: {'name': name, 'username': username, 'reason': reason, 'time': time}})
+# AFK users data store karne ke liye
 afk_users = {}
 
 # /start command
@@ -167,13 +167,35 @@ def handle_all_messages(message):
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-        # --- 4. AFK Reply for @mentions in text ---
+        # --- 4. AFK Reply for Mentions (Using Entities & Text matching) ---
         if message.text and chat_id in afk_users:
             text_lower = message.text.lower()
+            mentioned_ids = set()
+            
+            # Check telegram message entities for mentions
+            if message.entities:
+                for entity in message.entities:
+                    if entity.type == 'text_mention':
+                        if entity.user:
+                            mentioned_ids.add(entity.user.id)
+                    elif entity.type == 'mention':
+                        mentioned_username = message.text[entity.offset:entity.offset + entity.length].lower().replace('@', '')
+                        for afk_uid, afk_info in afk_users[chat_id].items():
+                            if afk_info['username'] == mentioned_username:
+                                mentioned_ids.add(afk_uid)
+
+            # Also check text directly for @username
             for afk_uid, afk_info in afk_users[chat_id].items():
                 if afk_info['username'] and f"@{afk_info['username']}" in text_lower:
-                    bot.send_message(chat_id, f"🔇 {afk_info['name']} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
-                    break
+                    mentioned_ids.add(afk_uid)
+
+            # Send alert for mentioned users
+            for afk_uid in mentioned_ids:
+                if afk_uid in afk_users[chat_id]:
+                    afk_info = afk_users[chat_id][afk_uid]
+                    # Don't trigger if user mentions themselves
+                    if afk_uid != user_id:
+                        bot.send_message(chat_id, f"🔇 {afk_info['name']} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
 # Inline buttons handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -209,4 +231,3 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
-    

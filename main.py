@@ -49,7 +49,7 @@ def send_help(message):
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
-# /afk command (Naya Feature!)
+# /afk command (Fixed reason parsing)
 @bot.message_handler(commands=['afk'])
 def set_afk(message):
     chat_id = message.chat.id
@@ -64,10 +64,12 @@ def set_afk(message):
         bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
         return
 
-    # Extract reason if provided
-    reason = message.text[len("/afk "):].strip()
-    if not reason:
-        reason = "Busy"
+    # Extract exact reason correctly, removing command and bot username if any
+    text_parts = message.text.split(maxsplit=1)
+    if len(text_parts) > 1:
+        reason = text_parts[1]
+    else:
+        reason = "Away from keyboard"
         
     afk_users[chat_id][user_id] = {
         'reason': reason,
@@ -140,16 +142,17 @@ def handle_all_messages(message):
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
         # Don't count /afk commands as messages
-        if not message.text.startswith('/afk'):
+        if message.text and message.text.startswith('/afk'):
+            pass
+        else:
             user_scores[chat_id][user_id]['count'] += 1
 
         # --- 2. AFK Welcome Back (Reset) ---
         if chat_id in afk_users and user_id in afk_users[chat_id]:
-            if not message.text.startswith('/afk'):
+            if message.text and not message.text.startswith('/afk'):
                 afk_data = afk_users[chat_id].pop(user_id) # Remove from AFK
                 afk_time_sec = int(time.time() - afk_data['time'])
                 
-                # Format time nicely
                 if afk_time_sec < 60:
                     afk_time_str = f"{afk_time_sec}s"
                 elif afk_time_sec < 3600:
@@ -159,35 +162,13 @@ def handle_all_messages(message):
 
                 bot.send_message(chat_id, f"👋 Welcome back {user_name}!\nYou were AFK for: {afk_time_str}")
 
-        # --- 3. AFK Reply for Mentions ---
-        # Bot only replies if it has entities and those entities are mentions/tmntions
-        if message.entities:
-            for entity in message.entities:
-                if entity.type == 'mention':
-                    # Extract username, e.g., "@Billabadr"
-                    mentioned_username = message.text[entity.offset:entity.offset + entity.length]
-                    # Loop through AFK users to find a username match
-                    if chat_id in afk_users:
-                        for afk_uid, afk_info in afk_users[chat_id].items():
-                            # This is a bit complex as we need to match UID to username,
-                            # for simplicity, let's just check mentions to any AFK user's stored name
-                            ifMentionedUserNameMatchesAFKUser = False
-                            # We'd need to fetch user info by UID to match @username reliably,
-                            # so for now, we'll keep it simple and check mentions, though UID matching is better.
-                            pass # We will use a simpler mention logic to not complicate the UID lookup.
-
-        # Simplified mention logic: Check for replies to AFK users or mentions in text
+        # --- 3. AFK Reply for Replies ---
         if message.reply_to_message:
             replied_user_id = message.reply_to_message.from_user.id
             replied_user_name = message.reply_to_message.from_user.first_name
             if chat_id in afk_users and replied_user_id in afk_users[chat_id]:
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
-        elif message.text:
-            if chat_id in afk_users:
-                # We can't easily match arbitrary @username mentions to UID without an extra call.
-                # A common solution is tracking uid<->username mapping.
-                pass
 
 # Inline buttons handle karne ke liye
 @bot.callback_query_handler(func=lambda call: True)
@@ -221,8 +202,5 @@ def callback_query(call):
         bot.answer_callback_query(call.id, text, show_alert=True)
 
 if __name__ == "__main__":
-    # Background mein health check server chalana
     threading.Thread(target=run_server, daemon=True).start()
-    # Bot polling start karna
     bot.infinity_polling()
-    

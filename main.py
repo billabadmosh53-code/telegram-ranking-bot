@@ -8,7 +8,6 @@ from telebot import types
 TOKEN = "9270651831:AAF1rFK0q3DF_d61B9HmcDwCbj1i0FbQ5DM"
 bot = telebot.TeleBot(TOKEN)
 
-# Render ke port requirement ko poora karne ke liye built-in lightweight server
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -22,12 +21,9 @@ def run_server():
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
 
-# Scores store karne ke liye
 user_scores = {}
-# AFK users data store karne ke liye
 afk_users = {}
 
-# /start command
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup()
@@ -36,7 +32,6 @@ def send_welcome(message):
     markup.add(btn1, btn2)
     bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track group message rankings!", reply_markup=markup)
 
-# /help command
 @bot.message_handler(commands=['help'])
 def send_help(message):
     help_text = (
@@ -49,7 +44,6 @@ def send_help(message):
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
-# /afk command
 @bot.message_handler(commands=['afk'])
 def set_afk(message):
     chat_id = message.chat.id
@@ -76,7 +70,6 @@ def set_afk(message):
     
     bot.send_message(chat_id, f"✅ **AFK Status Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
 
-# /ranking ya /top command
 @bot.message_handler(commands=['ranking', 'top'])
 def show_ranking(message):
     chat_id = message.chat.id
@@ -105,7 +98,6 @@ def show_ranking(message):
         
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-# /mystats command
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
     chat_id = message.chat.id
@@ -125,7 +117,6 @@ def show_mystats(message):
         text = "📊 You haven't sent any messages tracked yet in this group!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-# Group messages track, AFK reply, aur AFK reset karne ke liye
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_all_messages(message):
     if message.chat.type in ['group', 'supergroup']:
@@ -167,37 +158,29 @@ def handle_all_messages(message):
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-        # --- 4. AFK Reply for Mentions (Using Entities & Text matching) ---
+        # --- 4. Super Flexible AFK Reply for Mentions / Names ---
         if message.text and chat_id in afk_users:
             text_lower = message.text.lower()
-            mentioned_ids = set()
+            notified = set()
             
-            # Check telegram message entities for mentions
-            if message.entities:
-                for entity in message.entities:
-                    if entity.type == 'text_mention':
-                        if entity.user:
-                            mentioned_ids.add(entity.user.id)
-                    elif entity.type == 'mention':
-                        mentioned_username = message.text[entity.offset:entity.offset + entity.length].lower().replace('@', '')
-                        for afk_uid, afk_info in afk_users[chat_id].items():
-                            if afk_info['username'] == mentioned_username:
-                                mentioned_ids.add(afk_uid)
-
-            # Also check text directly for @username
             for afk_uid, afk_info in afk_users[chat_id].items():
-                if afk_info['username'] and f"@{afk_info['username']}" in text_lower:
-                    mentioned_ids.add(afk_uid)
+                if afk_uid == user_id:
+                    continue
+                
+                # Check username match or name match inside text
+                uname = afk_info['username']
+                fname = afk_info['name'].lower()
+                
+                matched = False
+                if uname and f"@{uname}" in text_lower:
+                    matched = True
+                elif fname in text_lower:
+                    matched = True
+                    
+                if matched and afk_uid not in notified:
+                    notified.add(afk_uid)
+                    bot.send_message(chat_id, f"🔇 {afk_info['name']} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-            # Send alert for mentioned users
-            for afk_uid in mentioned_ids:
-                if afk_uid in afk_users[chat_id]:
-                    afk_info = afk_users[chat_id][afk_uid]
-                    # Don't trigger if user mentions themselves
-                    if afk_uid != user_id:
-                        bot.send_message(chat_id, f"🔇 {afk_info['name']} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
-
-# Inline buttons handler
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
@@ -231,3 +214,4 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
+    

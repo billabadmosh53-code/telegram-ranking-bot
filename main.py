@@ -34,10 +34,7 @@ user_scores = {}
 afk_users = {}
 pending_promotions = {}
 user_warnings = {}
-
-
-def clean_name(name):
-  return re.sub(r'[^a-zA-Z0-9]', '', name).lower()
+group_ships = {}  # 24-hour ship cache {chat_id: {'u1': ..., 'u2': ..., 'pct': ..., 'time': ...}}
 
 
 @bot.message_handler(commands=['start'])
@@ -59,14 +56,14 @@ def send_help(message):
   help_text = (
       '🤖 **Bot Help Menu:**\n\n📊 **Ranking & Fun:**\n• `/ranking` or `/top` -'
       ' Global leaderboard\n• `/mystats` - Check your stats\n• `/afk [reason]`'
-      ' - Set AFK status\n• `/ship` - Matchmaking\n• `/mmf text` or `/mmf ;'
-      ' text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo or'
-      ' Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose'
+      ' - Set AFK status\n• `/ship` - Group Matchmaking (Lock for 24h)\n•'
+      ' `/mmf text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo'
+      ' or Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose'
       ' admin rights via 4 buttons\n• `/demote` - Remove admin rights\n•'
-      ' `/ban` - Ban user\n• `/unban [user_id]` - Unban user\n• `/kick` - Kick'
-      ' user\n• `/mute` - Mute user\n• `/unmute` - Unmute user\n• `/warn` - Warn'
-      ' user\n• `/unwarn` - Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin'
-      ' message'
+      ' `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` - Unban user\n•'
+      ' `/kick` - Kick user\n• `/mute` - Mute user (Reply or User ID)\n•'
+      ' `/unmute` - Unmute user\n• `/warn` - Warn user\n• `/unwarn` - Remove'
+      ' warnings\n• `/pin` / `/unpin` - Pin/Unpin message'
   )
   bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
 
@@ -92,41 +89,27 @@ def get_target_from_message(message):
   if len(parts) < 2:
     return None, None
 
-  query = parts[1].strip().lstrip('@')
-  clean_q = clean_name(query)
+  query = parts[1].strip()
 
-  if message.entities:
-    for entity in message.entities:
-      if entity.type == 'text_mention':
-        return entity.user.id, entity.user.first_name
-      elif entity.type == 'mention':
-        mention_text = text[
-            entity.offset : entity.offset + entity.length
-        ].strip()
-        try:
-          member = bot.get_chat_member(chat_id, mention_text)
-          return member.user.id, member.user.first_name
-        except:
-          pass
-
-  try:
-    member = bot.get_chat_member(chat_id, f'@{query}')
-    return member.user.id, member.user.first_name
-  except:
-    pass
-
-  if clean_q.isdigit():
+  clean_q = re.sub(r'[^0-9]', '', query)
+  if clean_q and clean_q.isdigit():
     try:
-      member = bot.get_chat_member(chat_id, int(clean_q))
+      uid = int(clean_q)
+      member = bot.get_chat_member(chat_id, uid)
       return member.user.id, member.user.first_name
     except:
       pass
 
+  clean_name_query = re.sub(r'[^a-zA-Z0-9]', '', query).lower()
   if chat_id in user_scores:
     for uid, udata in user_scores[chat_id].items():
-      db_name = clean_name(udata['name'])
-      db_uname = clean_name(udata['username']) if udata['username'] else ''
-      if clean_q in db_name or db_name in clean_q or clean_q in db_uname:
+      db_name = re.sub(r'[^a-zA-Z0-9]', '', udata['name']).lower()
+      db_uname = (
+          re.sub(r'[^a-zA-Z0-9]', '', udata['username']).lower()
+          if udata['username']
+          else ''
+      )
+      if clean_name_query in db_uname or clean_name_query in db_name:
         return uid, udata['name']
 
   return None, None
@@ -143,8 +126,7 @@ def promote_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        '⚠️ Kripya user ke message par reply karein ya naam likhein: `/promote'
-        ' [Name]`',
+        '⚠️ Kripya user ke message par reply karein ya User ID dein!',
         parse_mode='Markdown',
     )
     return
@@ -268,7 +250,7 @@ def demote_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
   try:
@@ -300,7 +282,7 @@ def ban_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
   try:
@@ -344,7 +326,7 @@ def kick_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
   try:
@@ -367,7 +349,7 @@ def mute_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
   try:
@@ -389,7 +371,7 @@ def unmute_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
   try:
@@ -418,7 +400,7 @@ def warn_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya naam likhein!'
+        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
     )
     return
 
@@ -439,8 +421,8 @@ def warn_user(message):
       bot.ban_chat_member(chat_id, target_id)
       bot.send_message(
           chat_id,
-          f'🚨 **{target_name}** ne 3 warnings poori kar li hain, isliye ban kar'
-          ' diya gaya hai!',
+          f'🚨 **{target_name}** ne 3 warnings poori kar li hain, isliye ban'
+          ' kar diya gaya hai!',
       )
     except:
       pass
@@ -529,13 +511,39 @@ def ship_users(message):
   if chat_id not in user_scores or len(user_scores[chat_id]) < 2:
     bot.send_message(chat_id, '⚠️ Kam se kam 2 active users hone chahiye!')
     return
+
+  current_time = time.time()
+  # Check if a ship pair already exists and is less than 24 hours old
+  if chat_id in group_ships:
+    ship_data = group_ships[chat_id]
+    if current_time - ship_data['time'] < 86400:  # 86400 seconds = 24 hours
+      u1 = ship_data['u1']
+      u2 = ship_data['u2']
+      pct = ship_data['pct']
+      bot.send_message(
+          chat_id,
+          f'💘 **Matchmaking (Locked for 24h):**\n✨ {u1} ❤️ {u2}\n📊 Compatibility:'
+          f' **{pct}%**',
+          parse_mode='Markdown',
+      )
+      return
+
+  # Generate new ship pair
   users = list(user_scores[chat_id].values())
-  u1, u2 = random.choice(users), random.choice(users)
-  pct = random.randint(20, 100)
+  u1_obj, u2_obj = random.choice(users), random.choice(users)
+  while u1_obj == u2_obj and len(users) > 1:
+    u2_obj = random.choice(users)
+
+  u1 = u1_obj['name']
+  u2 = u2_obj['name']
+  pct = random.randint(30, 100)
+
+  # Save to cache with current timestamp
+  group_ships[chat_id] = {'u1': u1, 'u2': u2, 'pct': pct, 'time': current_time}
+
   bot.send_message(
       chat_id,
-      f'💘 **Matchmaking:**\n✨ {u1["name"]} ❤️ {u2["name"]}\n📊 Compatibility:'
-      f' **{pct}%**',
+      f'💘 **Matchmaking:**\n✨ {u1} ❤️ {u2}\n📊 Compatibility: **{pct}%**',
       parse_mode='Markdown',
   )
 
@@ -575,18 +583,18 @@ def mmf_command(message):
 
     img.thumbnail((512, 420))
     w, h = img.size
-    canvas.paste(img, ((512 - w) // 2, 50), img)
+    canvas.paste(img, ((512 - w) // 2, 60), img)
 
     draw = ImageDraw.Draw(canvas)
     try:
-      font = ImageFont.truetype('arial.ttf', 70)
+      font = ImageFont.truetype('arial.ttf', 75)
     except:
       font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), meme_text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x = (512 - tw) / 2
-    y = 10
+    y = 5
 
     for ax in range(-4, 5):
       for ay in range(-4, 5):
@@ -597,6 +605,7 @@ def mmf_command(message):
     canvas.save(output, format='WEBP')
     output.seek(0)
     bot.send_sticker(chat_id, output)
+    bot.send_message(chat_id, '✅ Meme sticker created.')
   except Exception as e:
     bot.send_message(chat_id, f'❌ Error: {str(e)}')
 
@@ -653,24 +662,4 @@ def show_mystats(message):
         user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True
     )
     user_rank = next(
-        (i for i, (uid, _) in enumerate(rank, 1) if uid == user_id), 'N/A'
-    )
-    text = (
-        f'📊 **Your Stats:**\n👤 Name: {u["name"]}\n💬 Messages:'
-        f' {u["count"]}\n🏆 Rank: #{user_rank}'
-    )
-  else:
-    text = '📊 No stats yet!'
-  bot.send_message(message.chat.id, text, parse_mode='Markdown')
-
-
-@bot.message_handler(
-    func=lambda message: True,
-    content_types=[
-        'text',
-        'sticker',
-        'animation',
-        'photo',
-        'video',
-        'document',
-        'a
+        (i for i, (uid, _) in enumerate(ra

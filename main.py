@@ -60,10 +60,10 @@ def send_help(message):
       " `/mmf text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo"
       " or Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose"
       " admin rights via 4 buttons\n• `/demote` - Remove admin rights\n•"
-      " `/ban` - Ban user (Reply, Name or User ID)\n• `/unban [user_id]` -"
-      " Unban user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply, Name"
-      " or User ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n•"
-      " `/unwarn` - Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message"
+      " `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` - Unban"
+      " user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply or User"
+      " ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n• `/unwarn` -"
+      " Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message"
   )
   bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
@@ -90,7 +90,6 @@ def get_target_from_message(message):
     return None, None
 
   query = parts[1].strip().lstrip('@')
-
   clean_q = re.sub(r'[^0-9]', '', query)
   if clean_q and clean_q.isdigit():
     try:
@@ -126,7 +125,7 @@ def promote_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
         parse_mode="Markdown",
     )
     return
@@ -251,7 +250,7 @@ def demote_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
   try:
@@ -284,7 +283,7 @@ def ban_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
   try:
@@ -329,7 +328,7 @@ def kick_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
   try:
@@ -353,7 +352,7 @@ def mute_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
   try:
@@ -376,7 +375,7 @@ def unmute_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
   try:
@@ -406,7 +405,7 @@ def warn_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        "⚠️ Kripya user ke message par reply karein ya naam/ID likhein!",
+        "⚠️ Kripya user ke message par reply karein ya User ID dein!",
     )
     return
 
@@ -688,4 +687,4 @@ def show_ranking(message):
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
   chat_id, user_id = message.chat.id, message.from_user.id
-  if
+  if chat_id in user_scores and user_i

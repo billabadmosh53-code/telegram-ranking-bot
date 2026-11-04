@@ -60,10 +60,10 @@ def send_help(message):
       " `/mmf text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo"
       " or Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose"
       " admin rights via 4 buttons\n• `/demote` - Remove admin rights\n•"
-      " `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` - Unban"
-      " user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply or User"
-      " ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n• `/unwarn` -"
-      " Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message"
+      " `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` -"
+      " Unban user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply, Name"
+      " or User ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n•"
+      " `/unwarn` - Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message"
   )
   bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
@@ -686,5 +686,6 @@ def show_ranking(message):
 
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
-  chat_id, user_id = message.chat.id, message.from_user.id
-  if chat_id in user_scores and user_i
+  chat_id = message.chat.id
+  user_id = message.from_user.id
+  if chat_id in user_scores an

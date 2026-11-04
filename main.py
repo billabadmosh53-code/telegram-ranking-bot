@@ -47,7 +47,7 @@ def send_help(message):
         "• `/afk [reason]` - Set AFK status\n"
         "• `/ship` - Matchmaking\n"
         "• `/mmf text` or `/mmf ; text` - Perfect Meme Sticker\n"
-        "• `/kang` - Save sticker as Photo/Video\n\n"
+        "• `/kang` - Save sticker as Photo or Video\n\n"
         "🛡️ **Admin & Moderation Commands:**\n"
         "• `/promote` - Choose admin rights via 4 buttons\n"
         "• `/demote` - Remove admin rights\n"
@@ -80,6 +80,13 @@ def get_target_from_message(message):
     
     query = parts[1].strip().lstrip('@').lower()
     
+    # If query is a username starting with @ or plain text username
+    try:
+        member = bot.get_chat_member(chat_id, f"@{query}")
+        return member.user.id, member.user.first_name
+    except:
+        pass
+
     if query.isdigit():
         try:
             member = bot.get_chat_member(chat_id, int(query))
@@ -93,12 +100,6 @@ def get_target_from_message(message):
             if query in name or name in query:
                 return uid, udata['name']
                 
-    try:
-        member = bot.get_chat_member(chat_id, f"@{query}")
-        return member.user.id, member.user.first_name
-    except:
-        pass
-        
     return None, None
 
 @bot.message_handler(commands=['promote'])
@@ -110,7 +111,7 @@ def promote_user(message):
     
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam/username likhein: `/promote [Name]`", parse_mode="Markdown")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein: `/promote [Name]`", parse_mode="Markdown")
         return
 
     pending_promotions[message.from_user.id] = {'chat_id': chat_id, 'target_id': target_id, 'target_name': target_name}
@@ -160,7 +161,7 @@ def demote_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     try:
         bot.promote_chat_member(chat_id, target_id, can_manage_chat=False, can_delete_messages=False, can_restrict_members=False, can_promote_members=False, can_change_info=False, can_invite_users=False, can_pin_messages=False)
@@ -174,7 +175,7 @@ def ban_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     try:
         bot.ban_chat_member(chat_id, target_id)
@@ -202,7 +203,7 @@ def kick_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     try:
         bot.ban_chat_member(chat_id, target_id)
@@ -217,7 +218,7 @@ def mute_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=False)
@@ -231,7 +232,7 @@ def unmute_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
@@ -245,7 +246,7 @@ def warn_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
         return
     
     if chat_id not in user_warnings: user_warnings[chat_id] = {}
@@ -342,18 +343,19 @@ def mmf_command(message):
         img = Image.open(io.BytesIO(bot.download_file(file_info.file_path))).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
         
-        img.thumbnail((420, 420))
+        # Exact sizing so sticker stays centered and prominent
+        img.thumbnail((512, 450))
         w, h = img.size
-        canvas.paste(img, ((512 - w) // 2, 45 if not is_bottom else 15), img)
+        canvas.paste(img, ((512 - w) // 2, 35 if not is_bottom else 10), img)
         
         draw = ImageDraw.Draw(canvas)
-        try: font = ImageFont.truetype("arial.ttf", 50)
+        try: font = ImageFont.truetype("arial.ttf", 60)
         except: font = ImageFont.load_default()
         
         bbox = draw.textbbox((0, 0), meme_text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x = (512 - tw) / 2
-        y = 512 - th - 20 if is_bottom else 15
+        y = 512 - th - 10 if is_bottom else 5
         
         for ax in range(-3, 4):
             for ay in range(-3, 4):
@@ -385,7 +387,7 @@ def save_sticker_command(message):
             output.seek(0)
             bot.send_photo(chat_id, output, caption="📸 Saved Sticker as Photo!")
         elif sticker.is_video:
-            bot.send_video(chat_id, sticker.file_id, caption="🎥 Saved Video Sticker!")
+            bot.send_video(chat_id, sticker.file_id, caption="🎥 Saved Video!")
         else:
             bot.send_document(chat_id, sticker.file_id, caption="📁 Saved Animated Sticker!")
     except Exception as e:
@@ -431,5 +433,4 @@ if __name__ == "__main__":
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"Polling error: {e}")
-            time.sleep(3)
-        
+            time.sleep(

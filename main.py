@@ -46,7 +46,7 @@ def send_help(message):
         "• `/mystats` - Check your stats\n"
         "• `/afk [reason]` - Set AFK status\n"
         "• `/ship` - Matchmaking\n"
-        "• `/mmf text` or `/mmf ; text` - Perfect Edge Meme Sticker\n"
+        "• `/mmf text` or `/mmf ; text` - Big & Bold Meme Sticker\n"
         "• `/kang` - Save sticker as Photo or Video\n\n"
         "🛡️ **Admin & Moderation Commands:**\n"
         "• `/promote` - Choose admin rights via 4 buttons\n"
@@ -78,37 +78,13 @@ def get_target_from_message(message):
     if len(parts) < 2:
         return None, None
     
-    query = parts[1].strip()
+    query = parts[1].strip().lstrip('@').lower()
     
-    # 1. Try if it's a username starting with @
-    if query.startswith('@'):
-        try:
-            member = bot.get_chat_member(chat_id, query)
-            return member.user.id, member.user.first_name
-        except:
-            pass
-            
-    # 2. Try adding @ if user omitted it
-    try:
-        member = bot.get_chat_member(chat_id, f"@{query.lstrip('@')}")
-        return member.user.id, member.user.first_name
-    except:
-        pass
-
-    # 3. Try if it's a User ID
-    if query.isdigit():
-        try:
-            member = bot.get_chat_member(chat_id, int(query))
-            return member.user.id, member.user.first_name
-        except:
-            pass
-
-    # 4. Search in active user scores or cached names in chat
-    clean_query = query.lstrip('@').lower()
     if chat_id in user_scores:
         for uid, udata in user_scores[chat_id].items():
             name = udata['name'].lower()
-            if clean_query in name or name in clean_query:
+            uname = udata['username'].lower() if udata['username'] else ""
+            if query == uname or query in name or name in query:
                 return uid, udata['name']
                 
     return None, None
@@ -122,7 +98,7 @@ def promote_user(message):
     
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein: `/promote [Name]`", parse_mode="Markdown")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam/username likhein: `/promote [Name]`", parse_mode="Markdown")
         return
 
     pending_promotions[message.from_user.id] = {'chat_id': chat_id, 'target_id': target_id, 'target_name': target_name}
@@ -172,7 +148,7 @@ def demote_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     try:
         bot.promote_chat_member(chat_id, target_id, can_manage_chat=False, can_delete_messages=False, can_restrict_members=False, can_promote_members=False, can_change_info=False, can_invite_users=False, can_pin_messages=False)
@@ -186,7 +162,7 @@ def ban_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     try:
         bot.ban_chat_member(chat_id, target_id)
@@ -214,7 +190,7 @@ def kick_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     try:
         bot.ban_chat_member(chat_id, target_id)
@@ -229,7 +205,7 @@ def mute_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=False)
@@ -243,7 +219,7 @@ def unmute_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
@@ -257,7 +233,7 @@ def warn_user(message):
     if not is_user_admin(chat_id, message.from_user.id): return
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya @username/naam likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein!")
         return
     
     if chat_id not in user_warnings: user_warnings[chat_id] = {}
@@ -354,10 +330,9 @@ def mmf_command(message):
         img = Image.open(io.BytesIO(bot.download_file(file_info.file_path))).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
         
-        # Fill canvas nicely
-        img.thumbnail((512, 480))
+        img.thumbnail((512, 440))
         w, h = img.size
-        canvas.paste(img, ((512 - w) // 2, 20 if not is_bottom else 5), img)
+        canvas.paste(img, ((512 - w) // 2, 30 if not is_bottom else 10), img)
         
         draw = ImageDraw.Draw(canvas)
         try: font = ImageFont.truetype("arial.ttf", 65)
@@ -366,10 +341,10 @@ def mmf_command(message):
         bbox = draw.textbbox((0, 0), meme_text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x = (512 - tw) / 2
-        y = 512 - th - 5 if is_bottom else 2
+        y = 512 - th - 15 if is_bottom else 5
         
-        for ax in range(-3, 4):
-            for ay in range(-3, 4):
+        for ax in range(-4, 5):
+            for ay in range(-4, 5):
                 draw.text((x + ax, y + ay), meme_text, font=font, fill="black")
         draw.text((x, y), meme_text, font=font, fill="white")
         
@@ -398,7 +373,7 @@ def save_sticker_command(message):
             output.seek(0)
             bot.send_photo(chat_id, output, caption="📸 Saved Sticker as Photo!")
         elif sticker.is_video:
-            bot.send_video(chat_id, sticker.file_id, caption="🎥 Saved Video!")
+            bot.send_video(chat_id, sticker.file_id, caption="🎥 Saved Video Sticker!")
         else:
             bot.send_document(chat_id, sticker.file_id, caption="📁 Saved Animated Sticker!")
     except Exception as e:
@@ -432,7 +407,21 @@ def show_mystats(message):
 def handle_all_messages(message):
     if message.chat.type in ['group', 'supergroup']:
         chat_id, user_id, user_name = message.chat.id, message.from_user.id, message.from_user.first_name
+        username = message.from_user.username
         msg_text = message.text or message.caption or ""
         if chat_id not in user_scores: user_scores[chat_id] = {}
-        if user_id not in user_scores[chat_id]: user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
-        if not msg_text.startswi
+        if user_id not in user_scores[chat_id]: 
+            user_scores[chat_id][user_id] = {'name': user_name, 'username': username, 'count': 0}
+        else:
+            user_scores[chat_id][user_id]['name'] = user_name
+            user_scores[chat_id][user_id]['username'] = username
+        if not msg_text.startswith('/'): user_scores[chat_id][user_id]['count'] += 1
+
+if __name__ == "__main__":
+    threading.Thread(target=run_server, daemon=True).start()
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"Polling error: {e}")
+            time.sleep(3)

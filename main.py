@@ -8,7 +8,7 @@ import telebot
 from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 
-TOKEN = "9270651831:AAF1rFK0q3DF_d61B9HmcDwCbj1i0FbQ5DM"
+TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
 # Render health check server
@@ -60,15 +60,12 @@ def send_help(message):
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
-# --- HELPER: Check if user is admin ---
 def is_user_admin(chat_id, user_id):
     try:
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ['creator', 'administrator']
     except:
         return False
-
-# --- MODERATION COMMANDS ---
 
 @bot.message_handler(commands=['promote'])
 def promote_user(message):
@@ -93,10 +90,10 @@ def demote_user(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap is command ko use karne ke liye Admin nahi hain!")
+        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya jis user ko demote karna hai, uske message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.first_name
@@ -114,13 +111,13 @@ def ban_user(message):
         bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya ban karne ke liye user ke message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
         return
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.first_name
     try:
         bot.ban_chat_member(chat_id, target_id)
-        bot.send_message(chat_id, f"🔨 **{target_name}** ko group se ban kar diya gaya hai!", parse_mode="Markdown")
+        bot.send_message(chat_id, f"🔨 **{target_name}** ko ban kar diya gaya hai!", parse_mode="Markdown")
     except Exception as e:
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
@@ -150,13 +147,13 @@ def kick_user(message):
         bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya kick karne ke liye user ke message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
         return
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.first_name
     try:
         bot.ban_chat_member(chat_id, target_id)
-        bot.unban_chat_member(chat_id, target_id) # Unban immediately so they can join via invite link again if they want
+        bot.unban_chat_member(chat_id, target_id)
         bot.send_message(chat_id, f"👢 **{target_name}** ko kick kar diya gaya hai!", parse_mode="Markdown")
     except Exception as e:
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
@@ -169,7 +166,7 @@ def mute_user(message):
         bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya mute karne ke liye user ke message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
         return
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.first_name
@@ -187,7 +184,7 @@ def unmute_user(message):
         bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya unmute karne ke liye user ke message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
         return
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.first_name
@@ -205,7 +202,7 @@ def pin_message(message):
         bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
         return
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya pin karne ke liye kisi message par reply karein!")
+        bot.send_message(chat_id, "⚠️ Kripya pin karne ke liye message par reply karein!")
         return
     try:
         bot.pin_chat_message(chat_id, message.reply_to_message.message_id)
@@ -226,32 +223,20 @@ def unpin_message(message):
     except Exception as e:
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
-# --- EXISTING FEATURES (AFK, Ship, MMF, Kang, Ranking) ---
-
 @bot.message_handler(commands=['afk'])
 def set_afk(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     username = message.from_user.username
-    
     if chat_id not in afk_users:
         afk_users[chat_id] = {}
-        
     if user_id in afk_users[chat_id]:
         bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
         return
-
     text_parts = message.text.split(maxsplit=1) if message.text else []
     reason = text_parts[1] if len(text_parts) > 1 else "Away from keyboard"
-        
-    afk_users[chat_id][user_id] = {
-        'name': user_name,
-        'username': username.lower() if username else None,
-        'reason': reason,
-        'time': time.time()
-    }
-    
+    afk_users[chat_id][user_id] = {'name': user_name, 'username': username.lower() if username else None, 'reason': reason, 'time': time.time()}
     bot.send_message(chat_id, f"✅ **AFK Status Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
 
 @bot.message_handler(commands=['ship'])
@@ -260,220 +245,106 @@ def ship_users(message):
     if chat_id not in user_scores or len(user_scores[chat_id]) < 2:
         bot.send_message(chat_id, "⚠️ Group mein shipping ke liye kam se kam 2 active users hone chahiye!")
         return
-        
     users_list = list(user_scores[chat_id].values())
-    user1 = random.choice(users_list)
-    user2 = random.choice(users_list)
-    
+    user1, user2 = random.choice(users_list), random.choice(users_list)
     attempts = 0
     while user1['name'] == user2['name'] and len(users_list) > 1 and attempts < 10:
         user2 = random.choice(users_list)
         attempts += 1
-
     percentage = random.randint(15, 100)
-    if percentage > 85:
-        remark = "💖 Perfect Match! Shaadi ki taiyari karo!"
-    elif percentage > 60:
-        remark = "💞 Achhi Jodi hai!"
-    elif percentage > 40:
-        remark = "🤝 Friends with benefits type vibe!"
-    else:
-        remark = "💔 Door hi raho toh behtar hai!"
-
-    ship_text = (
-        f"💘 **Matchmaking / Shipping Result:**\n\n"
-        f"✨ {user1['name']}  ❤️  {user2['name']}\n"
-        f"📊 Compatibility: **{percentage}%**\n"
-        f"💬 {remark}"
-    )
-    bot.send_message(chat_id, ship_text, parse_mode="Markdown")
+    remark = "💖 Perfect Match!" if percentage > 85 else "💞 Achhi Jodi hai!" if percentage > 60 else "🤝 Friends with benefits!" if percentage > 40 else "💔 Door hi raho!"
+    bot.send_message(chat_id, f"💘 **Shipping Result:**\n✨ {user1['name']} ❤️ {user2['name']}\n📊 Compatibility: **{percentage}%**\n💬 {remark}", parse_mode="Markdown")
 
 @bot.message_handler(commands=['mmf'])
 def mmf_command(message):
     chat_id = message.chat.id
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya kisi photo ya static sticker par reply karke `/mmf text` ya `/mmf ; text` likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya photo/sticker par reply karke `/mmf text` ya `/mmf ; text` likhein!")
         return
-    
     replied = message.reply_to_message
-    file_id = None
-    
-    if replied.photo:
-        file_id = replied.photo[-1].file_id
-    elif replied.sticker and not replied.sticker.is_animated and not replied.sticker.is_video:
-        file_id = replied.sticker.file_id
-    else:
-        bot.send_message(chat_id, "⚠️ Yeh animated sticker hai ya supported media nahi hai! Kripya photo ya static sticker par reply karein.")
+    file_id = replied.photo[-1].file_id if replied.photo else replied.sticker.file_id if (replied.sticker and not replied.sticker.is_animated and not replied.sticker.is_video) else None
+    if not file_id:
+        bot.send_message(chat_id, "⚠️ Supported media nahi hai!")
         return
-
     full_text = message.text.split(maxsplit=1) if message.text else []
     raw_text = full_text[1] if len(full_text) > 1 else "MEME"
-    
-    is_bottom = False
-    if raw_text.startswith(';'):
-        is_bottom = True
-        meme_text = raw_text.lstrip(';').strip()
-        if not meme_text:
-            meme_text = "MEME"
-    else:
-        meme_text = raw_text
-
+    is_bottom = raw_text.startswith(';')
+    meme_text = raw_text.lstrip(';').strip() or "MEME"
     try:
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-        
         orig_image = Image.open(io.BytesIO(downloaded_file)).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
         orig_image.thumbnail((512, 400))
         w, h = orig_image.size
-        
-        paste_x = (512 - w) // 2
-        paste_y = 60 if not is_bottom else 20
-        canvas.paste(orig_image, (paste_x, paste_y), orig_image)
-        
+        canvas.paste(orig_image, ((512 - w) // 2, 60 if not is_bottom else 20), orig_image)
         draw = ImageDraw.Draw(canvas)
-        font_size = 45
-        try:
-            font = ImageFont.truetype("arial.ttf", font_size)
-        except:
-            font = ImageFont.load_default()
-            
+        try: font = ImageFont.truetype("arial.ttf", 45)
+        except: font = ImageFont.load_default()
         bbox = draw.textbbox((0, 0), meme_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        x = (512 - text_width) / 2
-        y = 512 - text_height - 35 if is_bottom else 10
-
-        outline_range = 3
-        for adj_x in range(-outline_range, outline_range + 1):
-            for adj_y in range(-outline_range, outline_range + 1):
+        x, y = (512 - (bbox[2] - bbox[0])) / 2, 512 - (bbox[3] - bbox[1]) - 35 if is_bottom else 10
+        for adj_x in range(-3, 4):
+            for adj_y in range(-3, 4):
                 draw.text((x + adj_x, y + adj_y), meme_text, font=font, fill="black")
-                
         draw.text((x, y), meme_text, font=font, fill="white")
-        
         output = io.BytesIO()
         canvas.save(output, format="WEBP")
         output.seek(0)
-        
         bot.send_sticker(chat_id, output)
     except Exception as e:
-        bot.send_message(chat_id, f"❌ Meme sticker banane mein error aaya: {str(e)}")
+        bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
 @bot.message_handler(commands=['kang'])
 def kang_command(message):
     chat_id = message.chat.id
-    user_name = message.from_user.first_name
-    
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kisi sticker, animation ya video par reply karke `/kang` likhein!")
+        bot.send_message(chat_id, "⚠️ Reply to sticker/media with `/kang`!")
         return
-        
-    replied = message.reply_to_message
-    if replied.sticker:
-        bot.send_sticker(chat_id, replied.sticker.file_id)
-        bot.send_message(chat_id, f"🥷 **{user_name}** ne sticker successfully kang kar liya! 🚀", parse_mode="Markdown")
-    elif replied.animation:
-        bot.send_animation(chat_id, replied.animation.file_id)
-        bot.send_message(chat_id, f"🥷 **{user_name}** ne GIF/Video sticker successfully kang kar liya! 🚀", parse_mode="Markdown")
-    elif replied.video:
-        bot.send_video(chat_id, replied.video.file_id)
-        bot.send_message(chat_id, f"🥷 **{user_name}** ne video successfully kang kar liya! 🚀", parse_mode="Markdown")
-    else:
-        bot.send_message(chat_id, "⚠️ Yeh koi sticker ya media nahi hai!")
+    r = message.reply_to_message
+    if r.sticker: bot.send_sticker(chat_id, r.sticker.file_id)
+    elif r.animation: bot.send_animation(chat_id, r.animation.file_id)
+    elif r.video: bot.send_video(chat_id, r.video.file_id)
+    else: bot.send_message(chat_id, "⚠️ Unsupported media!")
 
 @bot.message_handler(commands=['ranking', 'top'])
 def show_ranking(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    
     if chat_id in user_scores and user_scores[chat_id]:
         sorted_users = sorted(user_scores[chat_id].values(), key=lambda x: x['count'], reverse=True)
-        text = "🏆 **Global Active Users Ranking:**\n\n"
+        text = "🏆 **Global Ranking:**\n\n"
         for i, u in enumerate(sorted_users[:10], 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u['name']} — {u['count']} msgs\n"
-        
-        user_rank = "N/A"
-        user_count = 0
-        for i, (uid, u_data) in enumerate(sorted(user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True), 1):
-            if uid == user_id:
-                user_rank = i
-                user_count = u_data['count']
-                break
-        text += f"\n-------------------\n📍 **Your Standing:** #{user_rank} | {user_count} msgs"
+            text += f"{'🥇' if i==1 else '🥈' if i==2 else '🥉' if i==3 else f'{i}.'} {u['name']} — {u['count']} msgs\n"
     else:
-        text = "No message data yet for this group! Pehle kuch messages bhejiye."
+        text = "No message data yet!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
+    chat_id, user_id = message.chat.id, message.from_user.id
     if chat_id in user_scores and user_id in user_scores[chat_id]:
-        user_data = user_scores[chat_id][user_id]
-        sorted_users = sorted(user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True)
-        user_rank = "N/A"
-        for i, (uid, _) in enumerate(sorted_users, 1):
-            if uid == user_id:
-                user_rank = i
-                break
-        text = f"📊 **Your Stats:**\n👤 Name: {user_data['name']}\n💬 Total Messages: {user_data['count']}\n🏆 Group Rank: #{user_rank}"
+        u = user_scores[chat_id][user_id]
+        rank = sorted(user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True)
+        user_rank = next((i for i, (uid, _) in enumerate(rank, 1) if uid == user_id), "N/A")
+        text = f"📊 **Your Stats:**\n👤 Name: {u['name']}\n💬 Messages: {u['count']}\n🏆 Rank: #{user_rank}"
     else:
-        text = "📊 You haven't sent any messages tracked yet in this group!"
+        text = "📊 No stats yet!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: True, content_types=['text', 'sticker', 'animation', 'photo', 'video', 'document', 'audio', 'voice'])
 def handle_all_messages(message):
     if message.chat.type in ['group', 'supergroup']:
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        user_name = message.from_user.first_name
+        chat_id, user_id, user_name = message.chat.id, message.from_user.id, message.from_user.first_name
         msg_text = message.text or message.caption or ""
+        if chat_id not in user_scores: user_scores[chat_id] = {}
+        if user_id not in user_scores[chat_id]: user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
+        if not msg_text.startswith('/'): user_scores[chat_id][user_id]['count'] += 1
 
-        if chat_id not in user_scores:
-            user_scores[chat_id] = {}
-        if user_id not in user_scores[chat_id]:
-            user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
-        
-        # Skip tracking for commands
-        if msg_text.startswith('/'):
-            pass
-        else:
-            user_scores[chat_id][user_id]['count'] += 1
-
-        if chat_id in afk_users and user_id in afk_users[chat_id]:
-            if not msg_text.startswith('/afk'):
-                afk_data = afk_users[chat_id].pop(user_id)
-                afk_time_sec = int(time.time() - afk_data['time'])
-                if afk_time_sec < 60:
-                    afk_time_str = f"{afk_time_sec}s"
-                elif afk_time_sec < 3600:
-                    afk_time_str = f"{afk_time_sec // 60}m {afk_time_sec % 60}s"
-                else:
-                    afk_time_str = f"{afk_time_sec // 3600}h {afk_time_sec // 60 % 60}m"
-                bot.send_message(chat_id, f"👋 Welcome back {user_name}!\nYou were AFK for: {afk_time_str}")
-
-        if message.reply_to_message:
-            replied_user_id = message.reply_to_message.from_user.id
-            replied_user_name = message.reply_to_message.from_user.first_name
-            if chat_id in afk_users and replied_user_id in afk_users[chat_id]:
-                afk_info = afk_users[chat_id][replied_user_id]
-                bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
-
-        if chat_id in afk_users:
-            text_lower = msg_text.lower()
-            notified = set()
-            for afk_uid, afk_info in afk_users[chat_id].items():
-                if afk_uid == user_id:
-                    continue
-                uname = afk_info['username']
-                fname = afk_info['name'].lower()
-                matched = False
-                if uname and f"@{uname}" in text_lower:
-                    matched = True
-                elif fname in text_lower:
-                    matched = True
-                if matched and afk_uid not in notified:
-                    notified.add(afk_uid)
-                    bot.send_messag
+if __name__ == "__main__":
+    threading.Thread(target=run_server, daemon=True).start()
+    # Safe loop to prevent application exit on polling errors
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"Polling error: {e}")
+            time.sleep(3)

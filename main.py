@@ -155,7 +155,7 @@ def promote_user(message):
   )
   bot.send_message(
       chat_id,
-      f"⚙️ **{target_name}** ke liye kis tarah ke admin rights dena chahte hain?",
+      "⚙️ **" + target_name + "** ke liye kis tarah ke admin rights dena chahte hain?",
       reply_markup=markup,
       parse_mode="Markdown",
   )
@@ -231,14 +231,14 @@ def promote_callback(call):
       desc = "🔒 Restricted Admin"
 
     bot.edit_message_text(
-        f"✅ **{target_name}** ko successfully **{desc}** bana diya gaya hai! 🚀",
+        "✅ **" + target_name + "** ko successfully **" + desc + "** bana diya gaya hai! 🚀",
         chat_id,
         call.message.message_id,
         parse_mode="Markdown",
     )
   except Exception as e:
     bot.edit_message_text(
-        f"❌ Error: {str(e)}", chat_id, call.message.message_id
+        "❌ Error: " + str(e), chat_id, call.message.message_id
     )
 
 
@@ -268,11 +268,11 @@ def demote_user(message):
     )
     bot.send_message(
         chat_id,
-        f"📉 **{target_name}** ke admin rights hata diye gaye hain.",
+        "📉 **" + target_name + "** ke admin rights hata diye gaye hain.",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['ban'])
@@ -291,11 +291,11 @@ def ban_user(message):
     bot.ban_chat_member(chat_id, target_id)
     bot.send_message(
         chat_id,
-        f"🔨 **{target_name}** ko ban kar diya gaya hai!",
+        "🔨 **" + target_name + "** ko ban kar diya gaya hai!",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['unban'])
@@ -313,11 +313,11 @@ def unban_user(message):
     bot.unban_chat_member(chat_id, int(parts[1]), only_if_banned=True)
     bot.send_message(
         chat_id,
-        f"🔓 User ID `{parts[1]}` ko unban kar diya gaya hai.",
+        "🔓 User ID `" + parts[1] + "` ko unban kar diya gaya hai.",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['kick'])
@@ -337,11 +337,11 @@ def kick_user(message):
     bot.unban_chat_member(chat_id, target_id)
     bot.send_message(
         chat_id,
-        f"👢 **{target_name}** ko kick kar diya gaya hai!",
+        "👢 **" + target_name + "** ko kick kar diya gaya hai!",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['mute'])
@@ -360,11 +360,11 @@ def mute_user(message):
     bot.restrict_chat_member(chat_id, target_id, can_send_messages=False)
     bot.send_message(
         chat_id,
-        f"🔇 **{target_name}** ko mute kar diya gaya hai!",
+        "🔇 **" + target_name + "** ko mute kar diya gaya hai!",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['unmute'])
@@ -390,11 +390,11 @@ def unmute_user(message):
     )
     bot.send_message(
         chat_id,
-        f"🔊 **{target_name}** ko unmute kar diya gaya hai!",
+        "🔊 **" + target_name + "** ko unmute kar diya gaya hai!",
         parse_mode="Markdown",
     )
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['warn'])
@@ -419,7 +419,11 @@ def warn_user(message):
 
   bot.send_message(
       chat_id,
-      f"⚠️ **{target_name}** ko warn kiya gaya hai! (Warnings: {warns}/3)",
+      "⚠️ **"
+      + target_name
+      + "** ko warn kiya gaya hai! (Warnings: "
+      + str(warns)
+      + "/3)",
       parse_mode="Markdown",
   )
   if warns >= 3:
@@ -427,8 +431,9 @@ def warn_user(message):
       bot.ban_chat_member(chat_id, target_id)
       bot.send_message(
           chat_id,
-          f"🚨 **{target_name}** ne 3 warnings poori kar li hain, isliye ban"
-          " kar diya gaya hai!",
+          "🚨 **"
+          + target_name
+          + "** ne 3 warnings poori kar li hain, isliye ban kar diya gaya hai!",
       )
     except:
       pass
@@ -449,12 +454,15 @@ def unwarn_user(message):
     )
     bot.send_message(
         chat_id,
-        f"🔄 **{target_name}** ki ek warning hata di gayi hai. (Total:"
-        f" {user_warnings[chat_id][target_id]}/3)",
+        "🔄 **"
+        + target_name
+        + "** ki ek warning hata di gayi hai. (Total: "
+        + str(user_warnings[chat_id][target_id])
+        + "/3)",
         parse_mode="Markdown",
     )
   else:
-    bot.send_message(chat_id, f"✅ **{target_name}** par koi warning nahi hai.")
+    bot.send_message(chat_id, "✅ **" + target_name + "** par koi warning nahi hai.")
 
 
 @bot.message_handler(commands=['pin'])
@@ -471,7 +479,7 @@ def pin_message(message):
     bot.pin_chat_message(chat_id, message.reply_to_message.message_id)
     bot.send_message(chat_id, "📌 Message successfully pin kar diya gaya hai!")
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['unpin'])
@@ -483,7 +491,7 @@ def unpin_message(message):
     bot.unpin_chat_message(chat_id)
     bot.send_message(chat_id, "📌 Message successfully unpin kar diya gaya hai!")
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['afk'])
@@ -494,7 +502,7 @@ def set_afk(message):
   if chat_id not in afk_users:
     afk_users[chat_id] = {}
   if user_id in afk_users[chat_id]:
-    bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
+    bot.send_message(chat_id, "Hey " + user_name + ", you are already AFK.")
     return
   parts = message.text.split(maxsplit=1) if message.text else []
   reason = parts[1] if len(parts) > 1 else "Away from keyboard"
@@ -506,7 +514,10 @@ def set_afk(message):
   }
   bot.send_message(
       chat_id,
-      f"✅ **AFK Enabled** for {user_name}.\n📝 Reason: {reason}",
+      "✅ **AFK Enabled** for "
+      + user_name
+      + ".\n📝 Reason: "
+      + reason,
       parse_mode="Markdown",
   )
 
@@ -527,8 +538,13 @@ def ship_users(message):
       pct = ship_data['pct']
       bot.send_message(
           chat_id,
-          f"💘 **Matchmaking (Locked for 24h):**\n✨ {u1} ❤️ {u2}\n📊 Compatibility:"
-          f" **{pct}%**",
+          "💘 **Matchmaking (Locked for 24h):**\n✨ "
+          + u1
+          + " ❤️ "
+          + u2
+          + "\n📊 Compatibility: **"
+          + str(pct)
+          + "%**",
           parse_mode="Markdown",
       )
       return
@@ -546,7 +562,13 @@ def ship_users(message):
 
   bot.send_message(
       chat_id,
-      f"💘 **Matchmaking:**\n✨ {u1} ❤️ {u2}\n📊 Compatibility: **{pct}%**",
+      "💘 **Matchmaking:**\n✨ "
+      + u1
+      + " ❤️ "
+      + u2
+      + "\n📊 Compatibility: **"
+      + str(pct)
+      + "%**",
       parse_mode="Markdown",
   )
 
@@ -609,7 +631,7 @@ def mmf_command(message):
     output.seek(0)
     bot.send_sticker(chat_id, output)
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error: {str(e)}")
+    bot.send_message(chat_id, "❌ Error: " + str(e))
 
 
 @bot.message_handler(commands=['kang'])
@@ -638,7 +660,7 @@ def save_sticker_command(message):
       output.seek(0)
       bot.send_photo(chat_id, output, caption="📸 Saved Sticker as Photo!")
   except Exception as e:
-    bot.send_message(chat_id, f"❌ Error saving sticker: {str(e)}")
+    bot.send_message(chat_id, "❌ Error saving sticker: " + str(e))
 
 
 @bot.message_handler(commands=['ranking', 'top'])
@@ -651,8 +673,12 @@ def show_ranking(message):
     text = "🏆 **Global Ranking:**\n\n"
     for i, u in enumerate(sorted_users[:10], 1):
       text += (
-          f"{'🥇' if i==1 else '🥈' if i==2 else '🥉' if i==3 else f'{i}.'}"
-          f" {u['name']} — {u['count']} msgs\n"
+          ("🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else str(i) + ".")
+          + " "
+          + u['name']
+          + " — "
+          + str(u['count'])
+          + " msgs\n"
       )
   else:
     text = "No message data yet!"
@@ -662,13 +688,4 @@ def show_ranking(message):
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
   chat_id, user_id = message.chat.id, message.from_user.id
-  if chat_id in user_scores and user_id in user_scores[chat_id]:
-    u = user_scores[chat_id][user_id]
-    rank = sorted(
-        user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True
-    )
-    user_rank = next(
-        (i for i, (uid, _) in enumerate(rank, 1) if uid == user_id), "N/A"
-    )
-    text = (
-        f"📊 **Your Stats:**\n👤 Name: {
+  if

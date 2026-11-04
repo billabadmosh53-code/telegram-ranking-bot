@@ -31,7 +31,7 @@ def send_welcome(message):
     btn1 = types.InlineKeyboardButton("📊 Your Stats", callback_data="stats")
     btn2 = types.InlineKeyboardButton("🏆 Top Ranking", callback_data="top")
     markup.add(btn1, btn2)
-    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track group message rankings and ship members!", reply_markup=markup)
+    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track rankings, ship members, make memes, and kang stickers!", reply_markup=markup)
 
 @bot.message_handler(commands=['help'])
 def send_help(message):
@@ -42,6 +42,8 @@ def send_help(message):
         "• Use `/mystats` to check your personal stats.\n"
         "• Use `/afk [reason]` to go AFK.\n"
         "• Use `/ship` to find a match in the group!\n"
+        "• Reply to a photo/sticker with `/mmf [text]` to make a meme.\n"
+        "• Reply to a sticker/video sticker with `/kang` to steal it!\n"
         "• Use the inline buttons anytime!"
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
@@ -72,7 +74,7 @@ def set_afk(message):
     
     bot.send_message(chat_id, f"✅ **AFK Status Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
 
-# /ship command (Naya Feature!)
+# /ship command
 @bot.message_handler(commands=['ship'])
 def ship_users(message):
     chat_id = message.chat.id
@@ -81,23 +83,17 @@ def ship_users(message):
         bot.send_message(chat_id, "⚠️ Group mein shipping ke liye kam se kam 2 active users hone chahiye!")
         return
         
-    # Get all active users in this group
     users_list = list(user_scores[chat_id].values())
-    
-    # Pick two random users
     user1 = random.choice(users_list)
     user2 = random.choice(users_list)
     
-    # Make sure user1 and user2 are not the same person (if possible)
     attempts = 0
     while user1['name'] == user2['name'] and len(users_list) > 1 and attempts < 10:
         user2 = random.choice(users_list)
         attempts += 1
 
-    # Generate a random compatibility score (0 to 100)
     percentage = random.randint(15, 100)
     
-    # Choose a fun emoji/status based on percentage
     if percentage > 85:
         remark = "💖 Perfect Match! Shaadi ki taiyari karo!"
     elif percentage > 60:
@@ -115,6 +111,39 @@ def ship_users(message):
     )
     
     bot.send_message(chat_id, ship_text, parse_mode="Markdown")
+
+# /mmf command (Make My Meme for Photo/Sticker)
+@bot.message_handler(commands=['mmf'])
+def mmf_command(message):
+    chat_id = message.chat.id
+    if not message.reply_to_message:
+        bot.send_message(chat_id, "⚠️ Kisi photo ya sticker par reply karke `/mmf [apna text]` likhein!")
+        return
+    
+    text_parts = message.text.split(maxsplit=1) if message.text else []
+    meme_text = text_parts[1] if len(text_parts) > 1 else "Meme Text"
+    
+    # Check if replied message has photo or sticker
+    if message.reply_to_message.photo or message.reply_to_message.sticker or message.reply_to_message.animation:
+        bot.send_message(chat_id, f"🖼️ **Meme Created!**\n💬 Text: *{meme_text}*", parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, "⚠️ Kripya kisi valid Photo ya Sticker ko reply karein!")
+
+# /kang command (Steal/Kang Sticker or Video Sticker)
+@bot.message_handler(commands=['kang'])
+def kang_command(message):
+    chat_id = message.chat.id
+    user_name = message.from_user.first_name
+    
+    if not message.reply_to_message:
+        bot.send_message(chat_id, "⚠️ Kisi sticker ya video sticker par reply karke `/kang` likhein!")
+        return
+        
+    replied = message.reply_to_message
+    if replied.sticker or replied.animation or replied.video:
+        bot.send_message(chat_id, f"🥷 **{user_name}** ne successfully sticker/video sticker kang kar liya hai! 🚀")
+    else:
+        bot.send_message(chat_id, "⚠️ Yeh koi sticker ya video sticker nahi hai!")
 
 @bot.message_handler(commands=['ranking', 'top'])
 def show_ranking(message):
@@ -177,7 +206,7 @@ def handle_all_messages(message):
         if user_id not in user_scores[chat_id]:
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
-        if msg_text.startswith('/afk') or msg_text.startswith('/ship'):
+        if msg_text.startswith('/afk') or msg_text.startswith('/ship') or msg_text.startswith('/mmf') or msg_text.startswith('/kang'):
             pass
         else:
             user_scores[chat_id][user_id]['count'] += 1

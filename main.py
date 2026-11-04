@@ -8,7 +8,7 @@ import telebot
 from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 
-TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
+TOKEN = "9270651831:AAF1rFK0q3DF_d61B9HmcDwCbj1i0FbQ5DM"
 bot = telebot.TeleBot(TOKEN)
 
 # Render health check server

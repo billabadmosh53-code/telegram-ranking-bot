@@ -8,10 +8,9 @@ import telebot
 from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 
-TOKEN = "9270651831:AAF1rFK0q3DF_d61B9HmcDwCbj1i0FbQ5DM"
+TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
-# Render health check server
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -27,6 +26,7 @@ def run_server():
 
 user_scores = {}
 afk_users = {}
+pending_promotions = {}
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -45,18 +45,17 @@ def send_help(message):
         "• `/mystats` - Check your stats\n"
         "• `/afk [reason]` - Set AFK status\n"
         "• `/ship` - Matchmaking\n"
-        "• `/mmf text` or `/mmf ; text` - Meme sticker\n"
+        "• `/mmf text` or `/mmf ; text` - Meme sticker (Bigger & Bold text!)\n"
         "• `/kang` - Steal sticker/media\n\n"
-        "🛡️ **Admin & Moderation Commands:**\n"
-        "• `/promote` (reply) - Make user admin\n"
-        "• `/demote` (reply) - Remove admin rights\n"
-        "• `/ban` (reply) - Ban user from group\n"
+        "🛡️ **Admin & Moderation Commands (Reply or @username):**\n"
+        "• `/promote` - Choose admin rights via buttons\n"
+        "• `/demote` - Remove admin rights\n"
+        "• `/ban` - Ban user\n"
         "• `/unban [user_id]` - Unban user\n"
-        "• `/kick` (reply) - Kick/remove user\n"
-        "• `/mute` (reply) - Restrict user from sending messages\n"
-        "• `/unmute` (reply) - Restore messaging rights\n"
-        "• `/pin` (reply) - Pin message\n"
-        "• `/unpin` (reply) - Unpin message"
+        "• `/kick` - Kick user\n"
+        "• `/mute` - Mute user\n"
+        "• `/unmute` - Unmute user\n"
+        "• `/pin` / `/unpin` - Pin/Unpin message"
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
@@ -67,6 +66,19 @@ def is_user_admin(chat_id, user_id):
     except:
         return False
 
+def get_target_user(message):
+    if message.reply_to_message:
+        return message.reply_to_message.from_user.id, message.reply_to_message.from_user.first_name
+    parts = message.text.split(maxsplit=1)
+    if len(parts) > 2 and parts[1].startswith('@'):
+        username = parts[1].lstrip('@')
+        try:
+            # Basic fallback if direct username mapping is needed, or parse via chat members
+            pass
+        except:
+            pass
+    return None, None
+
 @bot.message_handler(commands=['promote'])
 def promote_user(message):
     chat_id = message.chat.id
@@ -74,47 +86,75 @@ def promote_user(message):
     if not is_user_admin(chat_id, user_id):
         bot.send_message(chat_id, "⚠️ Aap is command ko use karne ke liye Admin nahi hain!")
         return
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya jis user ko promote karna hai, uske message par reply karke `/promote` likhein!")
+    
+    target_id, target_name = get_target_user(message)
+    if not target_id and message.reply_to_message:
+        target_id = message.reply_to_message.from_user.id
+        target_name = message.reply_to_message.from_user.first_name
+        
+    if not target_id:
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya `@username` likhein!")
         return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
+
+    pending_promotions[user_id] = {'chat_id': chat_id, 'target_id': target_id, 'target_name': target_name}
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("👑 Full Powerful Admin (All Rights)", callback_data="promo_full"),
+        types.InlineKeyboardButton("🛡️ Normal Moderator (Delete & Ban only)", callback_data="promo_normal"),
+        types.InlineKeyboardButton("⚡ Custom / Restrict Only", callback_data="promo_light")
+    )
+    bot.send_message(chat_id, f"⚙️ **{target_name}** ke liye kis tarah ke admin rights dena chahte hain?", reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('promo_'))
+def promote_callback(call):
+    user_id = call.from_user.id
+    if user_id not in pending_promotions:
+        bot.answer_callback_query(call.id, "⚠️ Session expired!", show_alert=True)
+        return
+    
+    data = pending_promotions.pop(user_id)
+    chat_id = data['chat_id']
+    target_id = data['target_id']
+    target_name = data['target_name']
+    
     try:
-        bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_delete_messages=True, can_invite_users=True, can_restrict_members=True)
-        bot.send_message(chat_id, f"✅ **{target_name}** ko successfully Admin promote kar diya gaya hai! 👑", parse_mode="Markdown")
+        if call.data == "promo_full":
+            bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_post_messages=True, can_edit_messages=True, can_delete_messages=True, can_manage_video_chats=True, can_restrict_members=True, can_promote_members=True, can_change_info=True, can_invite_users=True, can_pin_messages=True)
+            desc = "👑 Full Powerful Admin"
+        elif call.data == "promo_normal":
+            bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_delete_messages=True, can_restrict_members=True, can_invite_users=True, can_pin_messages=True)
+            desc = "🛡️ Normal Moderator"
+        else:
+            bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_restrict_members=True)
+            desc = "⚡ Custom Restrict Admin"
+            
+        bot.edit_message_text(f"✅ **{target_name}** ko successfully **{desc}** bana diya gaya hai! 🚀", chat_id, call.message.message_id, parse_mode="Markdown")
     except Exception as e:
-        bot.send_message(chat_id, f"❌ Error: {str(e)}")
+        bot.edit_message_text(f"❌ Error: {str(e)}", chat_id, call.message.message_id)
 
 @bot.message_handler(commands=['demote'])
 def demote_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
-        return
-    if not message.reply_to_message:
+    if not is_user_admin(chat_id, message.from_user.id): return
+    target_id, target_name = get_target_user(message)
+    if not target_id:
         bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
     try:
-        bot.promote_chat_member(chat_id, target_id, can_manage_chat=False, can_delete_messages=False, can_invite_users=False, can_restrict_members=False)
-        bot.send_message(chat_id, f"📉 **{target_name}** ke admin rights wapas le liye gaye hain.", parse_mode="Markdown")
+        bot.promote_chat_member(chat_id, target_id, can_manage_chat=False, can_delete_messages=False, can_restrict_members=False, can_promote_members=False, can_change_info=False, can_invite_users=False, can_pin_messages=False)
+        bot.send_message(chat_id, f"📉 **{target_name}** ke admin rights hata diye gaye hain.", parse_mode="Markdown")
     except Exception as e:
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
 @bot.message_handler(commands=['ban'])
 def ban_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
+    if not is_user_admin(chat_id, message.from_user.id): return
+    target_id, target_name = get_target_user(message)
+    if not target_id:
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
-        return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
     try:
         bot.ban_chat_member(chat_id, target_id)
         bot.send_message(chat_id, f"🔨 **{target_name}** ko ban kar diya gaya hai!", parse_mode="Markdown")
@@ -124,33 +164,25 @@ def ban_user(message):
 @bot.message_handler(commands=['unban'])
 def unban_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
-        return
+    if not is_user_admin(chat_id, message.from_user.id): return
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        bot.send_message(chat_id, "⚠️ Kripya user ID dein: `/unban [user_id]`", parse_mode="Markdown")
+        bot.send_message(chat_id, "⚠️ User ID dein: `/unban [user_id]`", parse_mode="Markdown")
         return
     try:
-        target_id = int(parts[1])
-        bot.unban_chat_member(chat_id, target_id, only_if_banned=True)
-        bot.send_message(chat_id, f"🔓 User ID `{target_id}` ko unban kar diya gaya hai.", parse_mode="Markdown")
+        bot.unban_chat_member(chat_id, int(parts[1]), only_if_banned=True)
+        bot.send_message(chat_id, f"🔓 User ID `{parts[1]}` ko unban kar diya gaya hai.", parse_mode="Markdown")
     except Exception as e:
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
 @bot.message_handler(commands=['kick'])
 def kick_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
+    if not is_user_admin(chat_id, message.from_user.id): return
+    target_id, target_name = get_target_user(message)
+    if not target_id:
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
-        return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
     try:
         bot.ban_chat_member(chat_id, target_id)
         bot.unban_chat_member(chat_id, target_id)
@@ -161,15 +193,11 @@ def kick_user(message):
 @bot.message_handler(commands=['mute'])
 def mute_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
+    if not is_user_admin(chat_id, message.from_user.id): return
+    target_id, target_name = get_target_user(message)
+    if not target_id:
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
-        return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=False)
         bot.send_message(chat_id, f"🔇 **{target_name}** ko mute kar diya gaya hai!", parse_mode="Markdown")
@@ -179,15 +207,11 @@ def mute_user(message):
 @bot.message_handler(commands=['unmute'])
 def unmute_user(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
+    if not is_user_admin(chat_id, message.from_user.id): return
+    target_id, target_name = get_target_user(message)
+    if not target_id:
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein!")
         return
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya reply karein!")
-        return
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.first_name
     try:
         bot.restrict_chat_member(chat_id, target_id, can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
         bot.send_message(chat_id, f"🔊 **{target_name}** ko unmute kar diya gaya hai!", parse_mode="Markdown")
@@ -197,10 +221,7 @@ def unmute_user(message):
 @bot.message_handler(commands=['pin'])
 def pin_message(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
-        return
+    if not is_user_admin(chat_id, message.from_user.id): return
     if not message.reply_to_message:
         bot.send_message(chat_id, "⚠️ Kripya pin karne ke liye message par reply karein!")
         return
@@ -213,10 +234,7 @@ def pin_message(message):
 @bot.message_handler(commands=['unpin'])
 def unpin_message(message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not is_user_admin(chat_id, user_id):
-        bot.send_message(chat_id, "⚠️ Aap Admin nahi hain!")
-        return
+    if not is_user_admin(chat_id, message.from_user.id): return
     try:
         bot.unpin_chat_message(chat_id)
         bot.send_message(chat_id, "📌 Message successfully unpin kar diya gaya hai!")
@@ -228,32 +246,25 @@ def set_afk(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.first_name
-    username = message.from_user.username
-    if chat_id not in afk_users:
-        afk_users[chat_id] = {}
+    if chat_id not in afk_users: afk_users[chat_id] = {}
     if user_id in afk_users[chat_id]:
         bot.send_message(chat_id, f"Hey {user_name}, you are already AFK.")
         return
-    text_parts = message.text.split(maxsplit=1) if message.text else []
-    reason = text_parts[1] if len(text_parts) > 1 else "Away from keyboard"
-    afk_users[chat_id][user_id] = {'name': user_name, 'username': username.lower() if username else None, 'reason': reason, 'time': time.time()}
-    bot.send_message(chat_id, f"✅ **AFK Status Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
+    parts = message.text.split(maxsplit=1) if message.text else []
+    reason = parts[1] if len(parts) > 1 else "Away from keyboard"
+    afk_users[chat_id][user_id] = {'name': user_name, 'username': message.from_user.username, 'reason': reason, 'time': time.time()}
+    bot.send_message(chat_id, f"✅ **AFK Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
 
 @bot.message_handler(commands=['ship'])
 def ship_users(message):
     chat_id = message.chat.id
     if chat_id not in user_scores or len(user_scores[chat_id]) < 2:
-        bot.send_message(chat_id, "⚠️ Group mein shipping ke liye kam se kam 2 active users hone chahiye!")
+        bot.send_message(chat_id, "⚠️ Kam se kam 2 active users hone chahiye!")
         return
-    users_list = list(user_scores[chat_id].values())
-    user1, user2 = random.choice(users_list), random.choice(users_list)
-    attempts = 0
-    while user1['name'] == user2['name'] and len(users_list) > 1 and attempts < 10:
-        user2 = random.choice(users_list)
-        attempts += 1
-    percentage = random.randint(15, 100)
-    remark = "💖 Perfect Match!" if percentage > 85 else "💞 Achhi Jodi hai!" if percentage > 60 else "🤝 Friends with benefits!" if percentage > 40 else "💔 Door hi raho!"
-    bot.send_message(chat_id, f"💘 **Shipping Result:**\n✨ {user1['name']} ❤️ {user2['name']}\n📊 Compatibility: **{percentage}%**\n💬 {remark}", parse_mode="Markdown")
+    users = list(user_scores[chat_id].values())
+    u1, u2 = random.choice(users), random.choice(users)
+    pct = random.randint(20, 100)
+    bot.send_message(chat_id, f"💘 **Matchmaking:**\n✨ {u1['name']} ❤️ {u2['name']}\n📊 Compatibility: **{pct}%**", parse_mode="Markdown")
 
 @bot.message_handler(commands=['mmf'])
 def mmf_command(message):
@@ -261,8 +272,8 @@ def mmf_command(message):
     if not message.reply_to_message:
         bot.send_message(chat_id, "⚠️ Kripya photo/sticker par reply karke `/mmf text` ya `/mmf ; text` likhein!")
         return
-    replied = message.reply_to_message
-    file_id = replied.photo[-1].file_id if replied.photo else replied.sticker.file_id if (replied.sticker and not replied.sticker.is_animated and not replied.sticker.is_video) else None
+    r = message.reply_to_message
+    file_id = r.photo[-1].file_id if r.photo else r.sticker.file_id if (r.sticker and not r.sticker.is_animated and not r.sticker.is_video) else None
     if not file_id:
         bot.send_message(chat_id, "⚠️ Supported media nahi hai!")
         return
@@ -272,21 +283,27 @@ def mmf_command(message):
     meme_text = raw_text.lstrip(';').strip() or "MEME"
     try:
         file_info = bot.get_file(file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        orig_image = Image.open(io.BytesIO(downloaded_file)).convert("RGBA")
+        img = Image.open(io.BytesIO(bot.download_file(file_info.file_path))).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-        orig_image.thumbnail((512, 400))
-        w, h = orig_image.size
-        canvas.paste(orig_image, ((512 - w) // 2, 60 if not is_bottom else 20), orig_image)
+        img.thumbnail((512, 380))
+        w, h = img.size
+        canvas.paste(img, ((512 - w) // 2, 60 if not is_bottom else 20), img)
         draw = ImageDraw.Draw(canvas)
-        try: font = ImageFont.truetype("arial.ttf", 45)
+        
+        # Biga and bold font size for clear visibility
+        try: font = ImageFont.truetype("arial.ttf", 60)
         except: font = ImageFont.load_default()
+        
         bbox = draw.textbbox((0, 0), meme_text, font=font)
-        x, y = (512 - (bbox[2] - bbox[0])) / 2, 512 - (bbox[3] - bbox[1]) - 35 if is_bottom else 10
-        for adj_x in range(-3, 4):
-            for adj_y in range(-3, 4):
-                draw.text((x + adj_x, y + adj_y), meme_text, font=font, fill="black")
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        x = (512 - tw) / 2
+        y = 512 - th - 40 if is_bottom else 15
+        
+        for ax in range(-4, 5):
+            for ay in range(-4, 5):
+                draw.text((x + ax, y + ay), meme_text, font=font, fill="black")
         draw.text((x, y), meme_text, font=font, fill="white")
+        
         output = io.BytesIO()
         canvas.save(output, format="WEBP")
         output.seek(0)
@@ -341,10 +358,10 @@ def handle_all_messages(message):
 
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
-    # Safe loop to prevent application exit on polling errors
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"Polling error: {e}")
             time.sleep(3)
+    

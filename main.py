@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+import random
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
 from telebot import types
@@ -30,7 +31,7 @@ def send_welcome(message):
     btn1 = types.InlineKeyboardButton("📊 Your Stats", callback_data="stats")
     btn2 = types.InlineKeyboardButton("🏆 Top Ranking", callback_data="top")
     markup.add(btn1, btn2)
-    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track group message rankings!", reply_markup=markup)
+    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track group message rankings and ship members!", reply_markup=markup)
 
 @bot.message_handler(commands=['help'])
 def send_help(message):
@@ -40,6 +41,7 @@ def send_help(message):
         "• Use `/ranking` or `/top` to see the global leaderboard.\n"
         "• Use `/mystats` to check your personal stats.\n"
         "• Use `/afk [reason]` to go AFK.\n"
+        "• Use `/ship` to find a match in the group!\n"
         "• Use the inline buttons anytime!"
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
@@ -69,6 +71,50 @@ def set_afk(message):
     }
     
     bot.send_message(chat_id, f"✅ **AFK Status Enabled** for {user_name}.\n📝 Reason: {reason}", parse_mode="Markdown")
+
+# /ship command (Naya Feature!)
+@bot.message_handler(commands=['ship'])
+def ship_users(message):
+    chat_id = message.chat.id
+    
+    if chat_id not in user_scores or len(user_scores[chat_id]) < 2:
+        bot.send_message(chat_id, "⚠️ Group mein shipping ke liye kam se kam 2 active users hone chahiye!")
+        return
+        
+    # Get all active users in this group
+    users_list = list(user_scores[chat_id].values())
+    
+    # Pick two random users
+    user1 = random.choice(users_list)
+    user2 = random.choice(users_list)
+    
+    # Make sure user1 and user2 are not the same person (if possible)
+    attempts = 0
+    while user1['name'] == user2['name'] and len(users_list) > 1 and attempts < 10:
+        user2 = random.choice(users_list)
+        attempts += 1
+
+    # Generate a random compatibility score (0 to 100)
+    percentage = random.randint(15, 100)
+    
+    # Choose a fun emoji/status based on percentage
+    if percentage > 85:
+        remark = "💖 Perfect Match! Shaadi ki taiyari karo!"
+    elif percentage > 60:
+        remark = "💞 Achhi Jodi hai!"
+    elif percentage > 40:
+        remark = "🤝 Friends with benefits type vibe!"
+    else:
+        remark = "💔 Door hi raho toh behtar hai!"
+
+    ship_text = (
+        f"💘 **Matchmaking / Shipping Result:**\n\n"
+        f"✨ {user1['name']}  ❤️  {user2['name']}\n"
+        f"📊 Compatibility: **{percentage}%**\n"
+        f"💬 {remark}"
+    )
+    
+    bot.send_message(chat_id, ship_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['ranking', 'top'])
 def show_ranking(message):
@@ -117,7 +163,6 @@ def show_mystats(message):
         text = "📊 You haven't sent any messages tracked yet in this group!"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-# Handle all types of content including text, stickers, animations, etc.
 @bot.message_handler(func=lambda message: True, content_types=['text', 'sticker', 'animation', 'photo', 'video', 'document', 'audio', 'voice'])
 def handle_all_messages(message):
     if message.chat.type in ['group', 'supergroup']:
@@ -132,7 +177,7 @@ def handle_all_messages(message):
         if user_id not in user_scores[chat_id]:
             user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
         
-        if msg_text.startswith('/afk'):
+        if msg_text.startswith('/afk') or msg_text.startswith('/ship'):
             pass
         else:
             user_scores[chat_id][user_id]['count'] += 1
@@ -152,7 +197,7 @@ def handle_all_messages(message):
 
                 bot.send_message(chat_id, f"👋 Welcome back {user_name}!\nYou were AFK for: {afk_time_str}")
 
-        # --- 3. AFK Reply for Replies (Including Stickers/GIFs responding to AFK users) ---
+        # --- 3. AFK Reply for Replies ---
         if message.reply_to_message:
             replied_user_id = message.reply_to_message.from_user.id
             replied_user_name = message.reply_to_message.from_user.first_name
@@ -160,7 +205,7 @@ def handle_all_messages(message):
                 afk_info = afk_users[chat_id][replied_user_id]
                 bot.send_message(chat_id, f"🔇 {replied_user_name} is currently **AFK**.\n📝 Reason: {afk_info['reason']}", parse_mode="Markdown")
 
-        # --- 4. AFK Reply for Mentions / Names ---
+        # --- 4. AFK Reply for Mentions ---
         if chat_id in afk_users:
             text_lower = msg_text.lower()
             notified = set()
@@ -215,3 +260,4 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
+    

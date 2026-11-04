@@ -146,21 +146,17 @@ def mmf_command(message):
         downloaded_file = bot.download_file(file_info.file_path)
         
         image = Image.open(io.BytesIO(downloaded_file)).convert("RGBA")
-        
-        # Resize/Fit to standard sticker size 512x512 for perfect sticker output
         image.thumbnail((512, 512))
         width, height = image.size
         
         draw = ImageDraw.Draw(image)
         
-        # Load a better font size scaling to make text big and clear
         font_size = max(24, int(height / 6))
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             font = ImageFont.load_default()
             
-        # Text wrapping/positioning logic
         bbox = draw.textbbox((0, 0), meme_text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
@@ -172,7 +168,6 @@ def mmf_command(message):
         else:
             y = 10
 
-        # Draw thick black outline for clear visibility on any background
         outline_range = 3
         for adj_x in range(-outline_range, outline_range + 1):
             for adj_y in range(-outline_range, outline_range + 1):

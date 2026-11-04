@@ -8,7 +8,7 @@ import telebot
 from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 
-TOKEN = "9270651831:AAF1rFK0q3DF_d61B9HmcDwCbj1i0FbQ5DM"
+TOKEN = "9270651831:AAHu43NPpfx0EbRgAkq-6aWLia95eXpV8qM"
 bot = telebot.TeleBot(TOKEN)
 
 # Render health check server
@@ -34,7 +34,7 @@ def send_welcome(message):
     btn1 = types.InlineKeyboardButton("📊 Your Stats", callback_data="stats")
     btn2 = types.InlineKeyboardButton("🏆 Top Ranking", callback_data="top")
     markup.add(btn1, btn2)
-    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track rankings, ship members, make real memes, and kang stickers!", reply_markup=markup)
+    bot.send_message(message.chat.id, "👋 Welcome! Add me to a group to track rankings, ship members, make memes from photos/stickers, and kang stickers!", reply_markup=markup)
 
 @bot.message_handler(commands=['help'])
 def send_help(message):
@@ -45,7 +45,7 @@ def send_help(message):
         "• Use `/mystats` to check your personal stats.\n"
         "• Use `/afk [reason]` to go AFK.\n"
         "• Use `/ship` to find a match in the group!\n"
-        "• Reply to a photo with `/mmf [text]` to generate a real meme image.\n"
+        "• Reply to a photo or sticker with `/mmf [text]` to generate a meme.\n"
         "• Reply to a sticker/video/GIF with `/kang` to steal and resend it!\n"
         "• Use the inline buttons anytime!"
     )
@@ -114,24 +114,43 @@ def ship_users(message):
 @bot.message_handler(commands=['mmf'])
 def mmf_command(message):
     chat_id = message.chat.id
-    if not message.reply_to_message or not message.reply_to_message.photo:
-        bot.send_message(chat_id, "⚠️ Kripya kisi photo par reply karke `/mmf [text]` likhein!")
+    if not message.reply_to_message:
+        bot.send_message(chat_id, "⚠️ Kripya kisi photo ya sticker par reply karke `/mmf [text]` likhein!")
         return
     
+    replied = message.reply_to_message
+    file_id = None
+    
+    if replied.photo:
+        file_id = replied.photo[-1].file_id
+    elif replied.sticker and not replied.sticker.is_animated and not replied.sticker.is_video:
+        file_id = replied.sticker.file_id
+    else:
+        bot.send_message(chat_id, "⚠️ Yeh ya toh animated sticker hai ya supported media nahi hai! Kripya photo ya static sticker par reply karein.")
+        return
+
     text_parts = message.text.split(maxsplit=1) if message.text else []
     meme_text = text_parts[1] if len(text_parts) > 1 else "MEME"
     
     try:
-        photo_file_id = message.reply_to_message.photo[-1].file_id
-        file_info = bot.get_file(photo_file_id)
+        file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        image = Image.open(io.BytesIO(downloaded_file)).convert("RGB")
+        image = Image.open(io.BytesIO(downloaded_file))
+        if image.mode in ("RGBA", "P"):
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            if image.mode == "P":
+                image = image.convert("RGBA")
+            background.paste(image, mask=image.split()[3])
+            image = background
+        else:
+            image = image.convert("RGB")
+            
         width, height = image.size
-        
         draw = ImageDraw.Draw(image)
+        
         try:
-            font = ImageFont.truetype("arial.ttf", int(height / 12))
+            font = ImageFont.truetype("arial.ttf", int(height / 10))
         except:
             font = ImageFont.load_default()
             
@@ -140,7 +159,7 @@ def mmf_command(message):
         text_height = bbox[3] - bbox[1]
         
         x = (width - text_width) / 2
-        y = height - text_height - int(height / 15)
+        y = height - text_height - int(height / 12)
         
         outline_range = max(2, int(height / 150))
         for adj_x in range(-outline_range, outline_range + 1):
@@ -305,4 +324,4 @@ def callback_query(call):
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
     bot.infinity_polling()
-                              
+        

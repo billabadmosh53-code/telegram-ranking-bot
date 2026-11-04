@@ -34,7 +34,7 @@ user_scores = {}
 afk_users = {}
 pending_promotions = {}
 user_warnings = {}
-group_ships = {}  # 24-hour ship cache {chat_id: {'u1': ..., 'u2': ..., 'pct': ..., 'time': ...}}
+group_ships = {}
 
 
 @bot.message_handler(commands=['start'])
@@ -60,10 +60,10 @@ def send_help(message):
       ' `/mmf text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo'
       ' or Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose'
       ' admin rights via 4 buttons\n• `/demote` - Remove admin rights\n•'
-      ' `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` - Unban user\n•'
-      ' `/kick` - Kick user\n• `/mute` - Mute user (Reply or User ID)\n•'
-      ' `/unmute` - Unmute user\n• `/warn` - Warn user\n• `/unwarn` - Remove'
-      ' warnings\n• `/pin` / `/unpin` - Pin/Unpin message'
+      ' `/ban` - Ban user (Reply, Name or User ID)\n• `/unban [user_id]` -'
+      ' Unban user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply, Name'
+      ' or User ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n•'
+      ' `/unwarn` - Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message'
   )
   bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
 
@@ -89,7 +89,7 @@ def get_target_from_message(message):
   if len(parts) < 2:
     return None, None
 
-  query = parts[1].strip()
+  query = parts[1].strip().lstrip('@')
 
   clean_q = re.sub(r'[^0-9]', '', query)
   if clean_q and clean_q.isdigit():
@@ -126,7 +126,7 @@ def promote_user(message):
   if not target_id:
     bot.send_message(
         chat_id,
-        '⚠️ Kripya user ke message par reply karein ya User ID dein!',
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
         parse_mode='Markdown',
     )
     return
@@ -250,7 +250,8 @@ def demote_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
   try:
@@ -282,7 +283,8 @@ def ban_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
   try:
@@ -326,7 +328,8 @@ def kick_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
   try:
@@ -349,7 +352,8 @@ def mute_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
   try:
@@ -371,7 +375,8 @@ def unmute_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
   try:
@@ -400,7 +405,8 @@ def warn_user(message):
   target_id, target_name = get_target_from_message(message)
   if not target_id:
     bot.send_message(
-        chat_id, '⚠️ Kripya user ke message par reply karein ya User ID dein!'
+        chat_id,
+        '⚠️ Kripya user ke message par reply karein ya naam/ID likhein!',
     )
     return
 
@@ -513,10 +519,9 @@ def ship_users(message):
     return
 
   current_time = time.time()
-  # Check if a ship pair already exists and is less than 24 hours old
   if chat_id in group_ships:
     ship_data = group_ships[chat_id]
-    if current_time - ship_data['time'] < 86400:  # 86400 seconds = 24 hours
+    if current_time - ship_data['time'] < 86400:
       u1 = ship_data['u1']
       u2 = ship_data['u2']
       pct = ship_data['pct']
@@ -528,7 +533,6 @@ def ship_users(message):
       )
       return
 
-  # Generate new ship pair
   users = list(user_scores[chat_id].values())
   u1_obj, u2_obj = random.choice(users), random.choice(users)
   while u1_obj == u2_obj and len(users) > 1:
@@ -538,7 +542,6 @@ def ship_users(message):
   u2 = u2_obj['name']
   pct = random.randint(30, 100)
 
-  # Save to cache with current timestamp
   group_ships[chat_id] = {'u1': u1, 'u2': u2, 'pct': pct, 'time': current_time}
 
   bot.send_message(
@@ -605,7 +608,6 @@ def mmf_command(message):
     canvas.save(output, format='WEBP')
     output.seek(0)
     bot.send_sticker(chat_id, output)
-    bot.send_message(chat_id, '✅ Meme sticker created.')
   except Exception as e:
     bot.send_message(chat_id, f'❌ Error: {str(e)}')
 
@@ -621,8 +623,12 @@ def save_sticker_command(message):
 
   sticker = message.reply_to_message.sticker
   try:
-    if sticker.is_video or sticker.is_animated:
+    if sticker.is_video:
       bot.send_video(chat_id, sticker.file_id, caption='🎥 Saved Video!')
+    elif sticker.is_animated:
+      bot.send_document(
+          chat_id, sticker.file_id, caption='📁 Saved Animated Sticker!'
+      )
     else:
       file_info = bot.get_file(sticker.file_id)
       downloaded_file = bot.download_file(file_info.file_path)
@@ -662,4 +668,7 @@ def show_mystats(message):
         user_scores[chat_id].items(), key=lambda x: x[1]['count'], reverse=True
     )
     user_rank = next(
-        (i for i, (uid, _) in enumerate(ra
+        (i for i, (uid, _) in enumerate(rank, 1) if uid == user_id), 'N/A'
+    )
+    text = (
+        f'📊 **Your Stats:**\n👤 Name: {

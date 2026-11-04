@@ -46,7 +46,7 @@ def send_help(message):
         "• `/mystats` - Check your stats\n"
         "• `/afk [reason]` - Set AFK status\n"
         "• `/ship` - Matchmaking\n"
-        "• `/mmf text` or `/mmf ; text` - Perfect Meme Sticker\n"
+        "• `/mmf text` or `/mmf ; text` - Perfect Edge Meme Sticker\n"
         "• `/kang` - Save sticker as Photo or Video\n\n"
         "🛡️ **Admin & Moderation Commands:**\n"
         "• `/promote` - Choose admin rights via 4 buttons\n"
@@ -78,15 +78,24 @@ def get_target_from_message(message):
     if len(parts) < 2:
         return None, None
     
-    query = parts[1].strip().lstrip('@').lower()
+    query = parts[1].strip()
     
-    # If query is a username starting with @ or plain text username
+    # 1. Try if it's a username starting with @
+    if query.startswith('@'):
+        try:
+            member = bot.get_chat_member(chat_id, query)
+            return member.user.id, member.user.first_name
+        except:
+            pass
+            
+    # 2. Try adding @ if user omitted it
     try:
-        member = bot.get_chat_member(chat_id, f"@{query}")
+        member = bot.get_chat_member(chat_id, f"@{query.lstrip('@')}")
         return member.user.id, member.user.first_name
     except:
         pass
 
+    # 3. Try if it's a User ID
     if query.isdigit():
         try:
             member = bot.get_chat_member(chat_id, int(query))
@@ -94,10 +103,12 @@ def get_target_from_message(message):
         except:
             pass
 
+    # 4. Search in active user scores or cached names in chat
+    clean_query = query.lstrip('@').lower()
     if chat_id in user_scores:
         for uid, udata in user_scores[chat_id].items():
             name = udata['name'].lower()
-            if query in name or name in query:
+            if clean_query in name or name in clean_query:
                 return uid, udata['name']
                 
     return None, None
@@ -343,19 +354,19 @@ def mmf_command(message):
         img = Image.open(io.BytesIO(bot.download_file(file_info.file_path))).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
         
-        # Exact sizing so sticker stays centered and prominent
-        img.thumbnail((512, 450))
+        # Fill canvas nicely
+        img.thumbnail((512, 480))
         w, h = img.size
-        canvas.paste(img, ((512 - w) // 2, 35 if not is_bottom else 10), img)
+        canvas.paste(img, ((512 - w) // 2, 20 if not is_bottom else 5), img)
         
         draw = ImageDraw.Draw(canvas)
-        try: font = ImageFont.truetype("arial.ttf", 60)
+        try: font = ImageFont.truetype("arial.ttf", 65)
         except: font = ImageFont.load_default()
         
         bbox = draw.textbbox((0, 0), meme_text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x = (512 - tw) / 2
-        y = 512 - th - 10 if is_bottom else 5
+        y = 512 - th - 5 if is_bottom else 2
         
         for ax in range(-3, 4):
             for ay in range(-3, 4):
@@ -424,13 +435,4 @@ def handle_all_messages(message):
         msg_text = message.text or message.caption or ""
         if chat_id not in user_scores: user_scores[chat_id] = {}
         if user_id not in user_scores[chat_id]: user_scores[chat_id][user_id] = {'name': user_name, 'count': 0}
-        if not msg_text.startswith('/'): user_scores[chat_id][user_id]['count'] += 1
-
-if __name__ == "__main__":
-    threading.Thread(target=run_server, daemon=True).start()
-    while True:
-        try:
-            bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        except Exception as e:
-            print(f"Polling error: {e}")
-            time.sleep(
+        if not msg_text.startswi

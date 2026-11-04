@@ -45,7 +45,7 @@ def send_help(message):
         "• Use `/mystats` to check your personal stats.\n"
         "• Use `/afk [reason]` to go AFK.\n"
         "• Use `/ship` to find a match in the group!\n"
-        "• Reply to a photo or sticker with `/mmf [text]` to generate a meme sticker.\n"
+        "• Reply to photo/sticker with `/mmf text` (top text) or `/mmf ; text` (bottom text).\n"
         "• Reply to a sticker/video/GIF with `/kang` to steal and resend it!\n"
         "• Use the inline buttons anytime!"
     )
@@ -115,7 +115,7 @@ def ship_users(message):
 def mmf_command(message):
     chat_id = message.chat.id
     if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Kripya kisi photo ya static sticker par reply karke `/mmf [text]` likhein!")
+        bot.send_message(chat_id, "⚠️ Kripya kisi photo ya static sticker par reply karke `/mmf text` ya `/mmf ; text` likhein!")
         return
     
     replied = message.reply_to_message
@@ -126,53 +126,26 @@ def mmf_command(message):
     elif replied.sticker and not replied.sticker.is_animated and not replied.sticker.is_video:
         file_id = replied.sticker.file_id
     else:
-        bot.send_message(chat_id, "⚠️ Yeh ya toh animated sticker hai ya supported media nahi hai! Kripya photo ya static sticker par reply karein.")
+        bot.send_message(chat_id, "⚠️ Yeh animated sticker hai ya supported media nahi hai! Kripya photo ya static sticker par reply karein.")
         return
 
-    text_parts = message.text.split(maxsplit=1) if message.text else []
-    meme_text = text_parts[1] if len(text_parts) > 1 else "MEME"
+    full_text = message.text.split(maxsplit=1) if message.text else []
+    raw_text = full_text[1] if len(full_text) > 1 else "MEME"
     
+    # Check if user wants text at bottom using semicolon ";"
+    is_bottom = False
+    if raw_text.startswith(';'):
+        is_bottom = True
+        meme_text = raw_text.lstrip(';').strip()
+        if not meme_text:
+            meme_text = "MEME"
+    else:
+        meme_text = raw_text
+
     try:
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
         image = Image.open(io.BytesIO(downloaded_file))
-        if image.mode in ("RGBA", "P"):
-            background = Image.new("RGBA", image.size, (255, 255, 255))
-            if image.mode == "P":
-                image = image.convert("RGBA")
-            background.paste(image, mask=image.split()[3])
-            image = background.convert("RGB")
-        else:
-            image = image.convert("RGB")
-            
-        width, height = image.size
-        draw = ImageDraw.Draw(image)
-        
-        try:
-            font = ImageFont.truetype("arial.ttf", int(height / 10))
-        except:
-            font = ImageFont.load_default()
-            
-        bbox = draw.textbbox((0, 0), meme_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        x = (width - text_width) / 2
-        y = height - text_height - int(height / 12)
-        
-        outline_range = max(2, int(height / 150))
-        for adj_x in range(-outline_range, outline_range + 1):
-            for adj_y in range(-outline_range, outline_range + 1):
-                draw.text((x + adj_x, y + adj_y), meme_text, font=font, fill="black")
-                
-        draw.text((x, y), meme_text, font=font, fill="white")
-        
-        output = io.BytesIO()
-        image.save(output, format="WEBP")
-        output.seek(0)
-        
-        bot.send_sticker(chat_id, output)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Meme sticker banane mein error aaya: {
-        
+        if image.mode
+    

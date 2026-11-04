@@ -45,8 +45,7 @@ def send_welcome(message):
   markup.add(btn1, btn2)
   bot.send_message(
       message.chat.id,
-      "👋 Welcome! Add me to a group to track rankings, manage admins, make"
-      " meme stickers, and more!",
+      "👋 Welcome! Add me to a group to track rankings, manage admins, make meme stickers, and more!",
       reply_markup=markup,
   )
 
@@ -54,16 +53,25 @@ def send_welcome(message):
 @bot.message_handler(commands=['help'])
 def send_help(message):
   help_text = (
-      "🤖 **Bot Help Menu:**\n\n📊 **Ranking & Fun:**\n• `/ranking` or `/top` -"
-      " Global leaderboard\n• `/mystats` - Check your stats\n• `/afk [reason]`"
-      " - Set AFK status\n• `/ship` - Group Matchmaking (Lock for 24h)\n•"
-      " `/mmf text` - Classic Meme Sticker\n• `/kang` - Save sticker as Photo"
-      " or Video\n\n🛡️ **Admin & Moderation Commands:**\n• `/promote` - Choose"
-      " admin rights via 4 buttons\n• `/demote` - Remove admin rights\n•"
-      " `/ban` - Ban user (Reply or User ID)\n• `/unban [user_id]` -"
-      " Unban user\n• `/kick` - Kick user\n• `/mute` - Mute user (Reply, Name"
-      " or User ID)\n• `/unmute` - Unmute user\n• `/warn` - Warn user\n•"
-      " `/unwarn` - Remove warnings\n• `/pin` / `/unpin` - Pin/Unpin message"
+      "🤖 **Bot Help Menu:**\n\n"
+      "📊 **Ranking & Fun:**\n"
+      "• `/ranking` or `/top` - Global leaderboard\n"
+      "• `/mystats` - Check your stats\n"
+      "• `/afk [reason]` - Set AFK status\n"
+      "• `/ship` - Group Matchmaking (Lock for 24h)\n"
+      "• `/mmf text` - Classic Meme Sticker\n"
+      "• `/kang` - Save sticker as Photo or Video\n\n"
+      "🛡️ **Admin & Moderation Commands:**\n"
+      "• `/promote` - Choose admin rights via 4 buttons\n"
+      "• `/demote` - Remove admin rights\n"
+      "• `/ban` - Ban user (Reply or User ID)\n"
+      "• `/unban [user_id]` - Unban user\n"
+      "• `/kick` - Kick user\n"
+      "• `/mute` - Mute user (Reply or User ID)\n"
+      "• `/unmute` - Unmute user\n"
+      "• `/warn` - Warn user\n"
+      "• `/unwarn` - Remove warnings\n"
+      "• `/pin` / `/unpin` - Pin/Unpin message"
   )
   bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
@@ -686,6 +694,4 @@ def show_ranking(message):
 
 @bot.message_handler(commands=['mystats', 'stats'])
 def show_mystats(message):
-  chat_id = message.chat.id
-  user_id = message.from_user.id
-  if chat_id in user_scores an
+  chat_id = message.chat.

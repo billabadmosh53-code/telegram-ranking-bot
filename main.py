@@ -46,9 +46,9 @@ def send_help(message):
         "• `/mystats` - Check your stats\n"
         "• `/afk [reason]` - Set AFK status\n"
         "• `/ship` - Matchmaking\n"
-        "• `/mmf text` or `/mmf ; text` - Big & Bold Meme Sticker\n"
-        "• `/kang` - Steal sticker/media\n\n"
-        "🛡️ **Admin & Moderation Commands (Reply or Name/@username):**\n"
+        "• `/mmf text` or `/mmf ; text` - Perfect Meme Sticker\n"
+        "• `/kang` - Save sticker as Photo/Video\n\n"
+        "🛡️ **Admin & Moderation Commands:**\n"
         "• `/promote` - Choose admin rights via 4 buttons\n"
         "• `/demote` - Remove admin rights\n"
         "• `/ban` - Ban user\n"
@@ -79,11 +79,26 @@ def get_target_from_message(message):
         return None, None
     
     query = parts[1].strip().lstrip('@').lower()
+    
+    if query.isdigit():
+        try:
+            member = bot.get_chat_member(chat_id, int(query))
+            return member.user.id, member.user.first_name
+        except:
+            pass
+
     if chat_id in user_scores:
         for uid, udata in user_scores[chat_id].items():
             name = udata['name'].lower()
-            if name == query or query in name:
+            if query in name or name in query:
                 return uid, udata['name']
+                
+    try:
+        member = bot.get_chat_member(chat_id, f"@{query}")
+        return member.user.id, member.user.first_name
+    except:
+        pass
+        
     return None, None
 
 @bot.message_handler(commands=['promote'])
@@ -95,7 +110,7 @@ def promote_user(message):
     
     target_id, target_name = get_target_from_message(message)
     if not target_id:
-        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam likhein: `/promote [Name]`", parse_mode="Markdown")
+        bot.send_message(chat_id, "⚠️ Kripya user ke message par reply karein ya naam/username likhein: `/promote [Name]`", parse_mode="Markdown")
         return
 
     pending_promotions[message.from_user.id] = {'chat_id': chat_id, 'target_id': target_id, 'target_name': target_name}
@@ -104,7 +119,7 @@ def promote_user(message):
     markup.add(
         types.InlineKeyboardButton("👑 Full Powerful Admin (All Rights)", callback_data="promo_full"),
         types.InlineKeyboardButton("🛡️ Normal Moderator (Ban, Info, Delete, Pin)", callback_data="promo_normal"),
-        types.InlineKeyboardButton("⚡ Custom / Restrict Only", callback_data="promo_light"),
+        types.InlineKeyboardButton("⚡ Custom Admin (Delete & Pin)", callback_data="promo_light"),
         types.InlineKeyboardButton("🔒 Restricted Admin (No Rights)", callback_data="promo_restricted")
     )
     bot.send_message(chat_id, f"⚙️ **{target_name}** ke liye kis tarah ke admin rights dena chahte hain?", reply_markup=markup, parse_mode="Markdown")
@@ -129,8 +144,8 @@ def promote_callback(call):
             bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_delete_messages=True, can_restrict_members=True, can_change_info=True, can_invite_users=True, can_pin_messages=True, can_promote_members=False)
             desc = "🛡️ Normal Moderator"
         elif call.data == "promo_light":
-            bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_restrict_members=True, can_delete_messages=True)
-            desc = "⚡ Custom Restrict Admin"
+            bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_delete_messages=True, can_pin_messages=True, can_restrict_members=False, can_change_info=False, can_invite_users=False, can_promote_members=False)
+            desc = "⚡ Custom Admin (Delete & Pin)"
         else:
             bot.promote_chat_member(chat_id, target_id, can_manage_chat=True, can_delete_messages=False, can_restrict_members=False, can_promote_members=False, can_change_info=False, can_invite_users=False, can_pin_messages=False)
             desc = "🔒 Restricted Admin"
@@ -327,21 +342,21 @@ def mmf_command(message):
         img = Image.open(io.BytesIO(bot.download_file(file_info.file_path))).convert("RGBA")
         canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
         
-        img.thumbnail((512, 420))
+        img.thumbnail((420, 420))
         w, h = img.size
         canvas.paste(img, ((512 - w) // 2, 45 if not is_bottom else 15), img)
         
         draw = ImageDraw.Draw(canvas)
-        try: font = ImageFont.truetype("arial.ttf", 65)
+        try: font = ImageFont.truetype("arial.ttf", 50)
         except: font = ImageFont.load_default()
         
         bbox = draw.textbbox((0, 0), meme_text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x = (512 - tw) / 2
-        y = 512 - th - 35 if is_bottom else 15
+        y = 512 - th - 20 if is_bottom else 15
         
-        for ax in range(-4, 5):
-            for ay in range(-4, 5):
+        for ax in range(-3, 4):
+            for ay in range(-3, 4):
                 draw.text((x + ax, y + ay), meme_text, font=font, fill="black")
         draw.text((x, y), meme_text, font=font, fill="white")
         
@@ -353,16 +368,28 @@ def mmf_command(message):
         bot.send_message(chat_id, f"❌ Error: {str(e)}")
 
 @bot.message_handler(commands=['kang'])
-def kang_command(message):
+def save_sticker_command(message):
     chat_id = message.chat.id
-    if not message.reply_to_message:
-        bot.send_message(chat_id, "⚠️ Reply to sticker/media with `/kang`!")
+    if not message.reply_to_message or not message.reply_to_message.sticker:
+        bot.send_message(chat_id, "⚠️ Kripya kisi sticker par reply karke `/kang` likhein!")
         return
-    r = message.reply_to_message
-    if r.sticker: bot.send_sticker(chat_id, r.sticker.file_id)
-    elif r.animation: bot.send_animation(chat_id, r.animation.file_id)
-    elif r.video: bot.send_video(chat_id, r.video.file_id)
-    else: bot.send_message(chat_id, "⚠️ Unsupported media!")
+    
+    sticker = message.reply_to_message.sticker
+    try:
+        if not sticker.is_animated and not sticker.is_video:
+            file_info = bot.get_file(sticker.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            img = Image.open(io.BytesIO(downloaded_file)).convert("RGB")
+            output = io.BytesIO()
+            img.save(output, format="PNG")
+            output.seek(0)
+            bot.send_photo(chat_id, output, caption="📸 Saved Sticker as Photo!")
+        elif sticker.is_video:
+            bot.send_video(chat_id, sticker.file_id, caption="🎥 Saved Video Sticker!")
+        else:
+            bot.send_document(chat_id, sticker.file_id, caption="📁 Saved Animated Sticker!")
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Error saving sticker: {str(e)}")
 
 @bot.message_handler(commands=['ranking', 'top'])
 def show_ranking(message):

@@ -1,2 +1,3 @@
-pyTelegramBotAPI
-Pillow
+pyTelegramBotAPI>=4.26,<5
+Pillow>=10.0,<13
+openai>=1.50,<3

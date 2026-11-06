@@ -11,7 +11,7 @@ import telebot
 from telebot import types
 
 # === CONFIGURATION ===
-TOKEN = "8396894464:AAGnd8hSvW7tfZvErlxDl8wp_H5xIzQ80Do"
+TOKEN = "8396894464:AAH2mqr3GEX9Mh23H_1L675rBm7kwRNEh3I"
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 # === IN-MEMORY DATABASES ===

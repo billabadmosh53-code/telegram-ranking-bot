@@ -19,7 +19,7 @@ user_scores = {}
 user_warnings = {}  
 group_ships = {}  
 afk_users = {}  
-group_filters = {}  # {chat_id: {keyword: response}}
+group_filters = {}  
 user_stats = {}  
 group_locks = {}    
 group_antispam = {} 
@@ -90,7 +90,7 @@ def send_welcome(message):
       "• `/stopfilter WORD` — Remove filter\n"
       "• `/antispam on|off` — Toggle antispam\n\n"
       "🎭 **Media & Tools:**\n"
-      "• `/mmf` — Large meme text on photo/sticker\n"
+      "• `/mmf` — Large bold meme text on photo/sticker\n"
       "• `/kang` — Save sticker\n"
       "• `@admin` / `@all [message]` — Tag admins or everyone"
   )
@@ -517,5 +517,93 @@ def moderation_actions(message):
     elif command == "unwarn":
       if chat_id in user_warnings and target_id in user_warnings[chat_id]:
         user_warnings[chat_id][target_id] = max(0, user_warnings[chat_id][target_id] - 1)
+        bot.reply_to(message, f"✅ Warning removed. Current warnings: {user_warnings[chat_id][target_id]}/3")
+  except Exception as e:
+    bot.reply_to(message, f"❌ Action failed. Error: {e}")
 
+
+# === TAGGING SYSTEM (@admin / @all) ===
+@bot.message_handler(func=lambda msg: msg.text and (msg.text.lower().startswith("@admin") or msg.text.lower().startswith("@all")))
+def handle_tags(message):
+  chat_id = message.chat.id
+  text = message.text.strip()
+  
+  if text.lower().startswith("@admin"):
+    try:
+      admins = bot.get_chat_administrators(chat_id)
+      admin_mentions = []
+      for admin in admins:
+        if not admin.user.is_bot:
+          name = admin.user.first_name
+          admin_mentions.append(f"[{name}](tg://user?id={admin.user.id})")
+      
+      custom_msg = text[6:].strip()
+      output = "🚨 **Attention Admins:** " + (" ".join(admin_mentions))
+      if custom_msg:
+        output += f"\n💬 **Reason:** {custom_msg}"
+      bot.reply_to(message, output)
+    except Exception as e:
+      bot.reply_to(message, f"❌ Could not fetch admins: {e}")
+
+  elif text.lower().startswith("@all"):
+    user_id = message.from_user.id
+    if not is_user_admin(chat_id, user_id):
+      bot.reply_to(message, "❌ Only administrators can use `@all` tag!")
+      return
     
+    custom_msg = text[4:].strip()
+    output = "📢 **Attention Everyone!**"
+    if custom_msg:
+      output += f"\n\n{custom_msg}"
+    bot.reply_to(message, output)
+
+
+# === MESSAGE & AFK MONITORING (Middleware) ===
+@bot.message_handler(
+    func=lambda message: True,
+    content_types=[
+        "text",
+        "sticker",
+        "animation",
+        "photo",
+        "video",
+        "document",
+        "audio",
+        "voice",
+    ],
+)
+def global_message_handler(message):
+  if message.chat.type in ["group", "supergroup"]:
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
+    username = message.from_user.username
+    msg_text = message.text or message.caption or ""
+
+    # 1. Filter Check
+    if chat_id in group_filters:
+      for kw, resp in group_filters[chat_id].items():
+        if kw in msg_text.lower():
+          bot.reply_to(message, resp)
+          break
+
+    # 2. Store User Stats & Names
+    if chat_id not in user_stats:
+      user_stats[chat_id] = {}
+    user_stats[chat_id][user_id] = {"name": user_name, "username": username}
+
+    # 3. Check AFK Return
+    if chat_id in afk_users and user_id in afk_users[chat_id]:
+      afk_info = afk_users[chat_id].pop(user_id)
+      duration = int(time.time() - afk_info["time"])
+      bot.reply_to(message, f"👋 Welcome back {user_name}! You were away for {duration} seconds.")
+
+    # 4. Check AFK Mentions in Reply
+    if message.reply_to_message:
+      replied_user_id = message.reply_to_message.from_user.id
+      if chat_id in afk_users and replied_user_id in afk_users[chat_id]:
+        afk_info = afk_users[chat_id][replied_user_id]
+        bot.reply_to(message, f"💤 User is currently AFK: {afk_info['reason']}")
+
+    # 5. Message Counting for Leaderboard
+   

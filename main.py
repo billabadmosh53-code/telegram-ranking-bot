@@ -435,16 +435,16 @@ def global_message_handler(message):
         bot.reply_to(message, f"💤 User is currently AFK: {afk_info['reason']}")
 
     # 4. Message Counting for Leaderboard
+       # 4. Message Counting for Leaderboard
     if not msg_text.startswith("/"):
       if chat_id not in user_scores:
         user_scores[chat_id] = {}
       if user_id not in user_scores[chat_id]:
         user_scores[chat_id][user_id] = {"name": user_name, "count": 0}
       else:
-      user_scores[chat_id][user_id]["name"] = user_name
-      user_scores[chat_id][user_id]["count"] += 1
-
-
+        user_scores[chat_id][user_id]["name"] = user_name
+        user_scores[chat_id][user_id]["count"] += 1
+        
 if __name__ == "__main__":
   # Start Keep-Alive Server Thread for Render
   threading.Thread(target=run_server, daemon=True).start()

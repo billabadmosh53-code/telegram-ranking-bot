@@ -1,5 +1,5 @@
 """MishraRobot V3 - Telegram group management bot.
-Required env: BOT_TOKEN. Optional: PORT, DATABASE_PATH, OPENAI_API_KEY, OPENAI_MODEL.
+Required env: BOT_TOKEN. Optional: PORT, DATABASE_PATH, GROQ_API_KEY, GROQ_MODEL.
 Run exactly one polling instance per token. Render: one Web Service instance.
 """
 import os, io, re, time, json, random, sqlite3, threading, logging
@@ -17,8 +17,8 @@ if not TOKEN:
     raise RuntimeError('BOT_TOKEN environment variable is missing; set it in Render Environment.')
 PORT = int(os.getenv('PORT', '10000'))
 DB_PATH = os.getenv('DATABASE_PATH', 'mishrarobot.db')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip()
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip()
 logging.basicConfig(level=os.getenv('LOG_LEVEL', 'INFO').upper(), format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('MishraRobot')
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML', threaded=True, num_threads=8)
@@ -202,7 +202,7 @@ HELP = '''🤖 <b>MISHRA ROBOT V3</b>
 @admin [reason] / @all [message] (admin only for @all)
 
 <b>Optional AI</b>
-/ai question — needs OPENAI_API_KEY'''
+/ai question — needs GROQ_API_KEY'''
 
 @bot.message_handler(commands=['start', 'help', 'panel'])
 def help_cmd(m): bot.send_message(m.chat.id, HELP)
@@ -777,34 +777,46 @@ def tag_all(m):
         extra = esc(reason)+'\n' if i == 0 and reason else ''
         bot.send_message(m.chat.id, header+extra+' '.join(mentions[i:i+30]), disable_web_page_preview=True)
 
-# ---------------- OPTIONAL AI ----------------
+# ---------------- OPTIONAL AI (GROQ FREE TIER) ----------------
 @bot.message_handler(commands=['ai'])
 def ai(m):
     p = (m.text or '').split(maxsplit=1)
     if len(p) < 2: return bot.reply_to(m, 'Usage: /ai ask a question')
-    if not OPENAI_API_KEY: return bot.reply_to(m, 'AI is optional. Add OPENAI_API_KEY to Render Environment to enable /ai.')
+    if not GROQ_API_KEY:
+        return bot.reply_to(m, 'AI is optional. Add GROQ_API_KEY to Render Environment to enable /ai.')
     try:
         import urllib.request, urllib.error
         payload = json.dumps({
-            'model': OPENAI_MODEL,
+            'model': GROQ_MODEL,
             'messages': [
                 {'role':'system','content':'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
                 {'role':'user','content':p[1][:3000]}
             ],
-            'max_tokens':500
+            'max_tokens':500,
+            'temperature':0.7
         }).encode('utf-8')
         req = urllib.request.Request(
-            'https://api.openai.com/v1/chat/completions', data=payload,
-            headers={'Authorization': f'Bearer {OPENAI_API_KEY}', 'Content-Type':'application/json'},
+            'https://api.groq.com/openai/v1/chat/completions', data=payload,
+            headers={'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type':'application/json'},
             method='POST'
         )
         with urllib.request.urlopen(req, timeout=35) as response:
             result = json.loads(response.read().decode('utf-8'))
         answer = result.get('choices',[{}])[0].get('message',{}).get('content') or 'No answer generated.'
         bot.reply_to(m, esc(answer)[:3500])
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode('utf-8', errors='replace')[:250]
+        log.warning('Groq AI HTTP error %s: %s', e.code, detail)
+        if e.code == 429:
+            message = 'Groq free usage limit reached. Please try again after the limit resets.'
+        elif e.code in (401, 403):
+            message = 'Groq API key was rejected. Check GROQ_API_KEY in Render Environment.'
+        else:
+            message = f'Groq AI request failed (HTTP {e.code}). Please try again later.'
+        bot.reply_to(m, message)
     except Exception as e:
-        log.exception('AI error')
-        bot.reply_to(m, 'AI request failed. Check OPENAI_API_KEY, model name, account billing, and Render logs: ' + esc(e)[:250])
+        log.exception('Groq AI error')
+        bot.reply_to(m, 'AI request failed. Check GROQ_API_KEY, GROQ_MODEL, and Render logs: ' + esc(e)[:200])
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])

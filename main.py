@@ -797,7 +797,12 @@ def ai(m):
         }).encode('utf-8')
         req = urllib.request.Request(
             'https://api.groq.com/openai/v1/chat/completions', data=payload,
-            headers={'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type':'application/json'},
+            headers={
+                'Authorization': f'Bearer {GROQ_API_KEY}',
+                'Content-Type': 'application/json',
+                'User-Agent': 'MishraRobot/1.0 (Telegram bot; Groq API client)',
+                'Accept': 'application/json',
+            },
             method='POST'
         )
         with urllib.request.urlopen(req, timeout=35) as response:

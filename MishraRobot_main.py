@@ -158,10 +158,21 @@ def target_id(m):
     for ent in (m.entities or []):
         if ent.type == 'text_mention' and ent.user:
             return ent.user.id
-    if token.startswith('@'):
-        username = token[1:].lstrip('@').lower()
+    # Accept both /info @username and /info username. Search global memory
+    # first, then older per-group records as a compatibility fallback.
+    if token.startswith('@') or re.fullmatch(r'[A-Za-z0-9_]{5,32}', token):
+        username = token.lstrip('@').lower()
         with DB_LOCK, connect() as c:
-            r = c.execute('SELECT user_id FROM global_users WHERE lower(username)=?', (username)).fetchone()
+            r = c.execute(
+                'SELECT user_id FROM global_users WHERE lower(replace(username, "@", ""))=? LIMIT 1',
+                (username,)
+            ).fetchone()
+            if not r:
+                r = c.execute(
+                    'SELECT user_id FROM stats WHERE lower(replace(username, "@", ""))=? '
+                    'ORDER BY last_active DESC LIMIT 1',
+                    (username,)
+                ).fetchone()
         return r['user_id'] if r else None
     return None
 
@@ -328,8 +339,14 @@ def info(m):
     uid = target_id(m) if (m.reply_to_message or len((m.text or '').split()) > 1) else (m.from_user.id if m.from_user else None)
     if not uid and not (m.reply_to_message or len((m.text or '').split()) > 1):
         return bot.reply_to(m, 'Could not identify that member. Reply to them or use /info @username or /info USER_ID.')
+    if not uid:
+        return bot.reply_to(m, 'Username nahi mila. /info @username ya /info USER_ID use karein. Username wala member pehle Mishra Robot ke kisi group mein active hona chahiye.')
     with DB_LOCK, connect() as c:
         row = c.execute('SELECT * FROM global_users WHERE user_id=?', (uid,)).fetchone()
+        if not row:
+            old = c.execute('SELECT name,username FROM stats WHERE user_id=? ORDER BY last_active DESC LIMIT 1', (uid,)).fetchone()
+            if old:
+                row = {'name': old['name'], 'username': old['username'], 'last_seen': 0}
     if not row:
         return bot.reply_to(m, 'No saved details for this member yet. The bot must have seen them in a group first.')
     seen = time.strftime('%d %b %Y, %I:%M %p', time.localtime(row['last_seen'] or 0)) if row['last_seen'] else 'Unknown'

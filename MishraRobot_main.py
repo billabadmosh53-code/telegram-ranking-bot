@@ -46,7 +46,24 @@ def init_db():
         CREATE TABLE IF NOT EXISTS antispam_approved(chat_id INTEGER,user_id INTEGER,PRIMARY KEY(chat_id,user_id));
         CREATE TABLE IF NOT EXISTS afk(chat_id INTEGER,user_id INTEGER,reason TEXT,since REAL,PRIMARY KEY(chat_id,user_id));
         CREATE TABLE IF NOT EXISTS ships(chat_id INTEGER,day TEXT,user1 INTEGER,user2 INTEGER,name1 TEXT,name2 TEXT,pct INTEGER,PRIMARY KEY(chat_id,day));
+        CREATE TABLE IF NOT EXISTS global_afk(user_id INTEGER PRIMARY KEY,reason TEXT,since REAL);
+        CREATE TABLE IF NOT EXISTS global_users(user_id INTEGER PRIMARY KEY,name TEXT,username TEXT,first_name TEXT,last_name TEXT,last_seen REAL,last_chat INTEGER);
         ''')
+        # Migrate previously saved group AFK statuses and member records.
+        c.execute('''INSERT INTO global_afk(user_id,reason,since)
+            SELECT a.user_id,a.reason,a.since FROM afk a
+            JOIN (SELECT user_id,MAX(since) AS latest FROM afk GROUP BY user_id) x
+            ON a.user_id=x.user_id AND a.since=x.latest
+            ON CONFLICT(user_id) DO UPDATE SET reason=excluded.reason,since=MAX(global_afk.since,excluded.since)''')
+        c.execute('''INSERT INTO global_users(user_id,name,username,last_seen,last_chat)
+            SELECT s.user_id,MAX(s.name),MAX(s.username),
+                   MAX(COALESCE(strftime('%s',s.last_active),0)),MAX(s.chat_id)
+            FROM stats s GROUP BY s.user_id
+            ON CONFLICT(user_id) DO UPDATE SET
+              name=COALESCE(excluded.name,global_users.name),
+              username=COALESCE(excluded.username,global_users.username),
+              last_seen=MAX(global_users.last_seen,excluded.last_seen),
+              last_chat=COALESCE(excluded.last_chat,global_users.last_chat)''')
         # Safe migrations for databases created by earlier MishraRobot versions.
         cols = {r['name'] for r in c.execute('PRAGMA table_info(filters)').fetchall()}
         if 'response_type' not in cols:
@@ -94,6 +111,11 @@ def remember_user(chat, u):
         c.execute('''INSERT INTO stats VALUES(?,?,?,?,0,datetime('now'))
         ON CONFLICT(chat_id,user_id) DO UPDATE SET name=excluded.name,username=excluded.username''',
         (chat, u.id, user_name(u), u.username))
+        c.execute('''INSERT INTO global_users(user_id,name,username,first_name,last_name,last_seen,last_chat)
+            VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+            name=excluded.name,username=excluded.username,first_name=excluded.first_name,
+            last_name=excluded.last_name,last_seen=excluded.last_seen,last_chat=excluded.last_chat''',
+            (u.id,user_name(u),u.username,getattr(u,'first_name',None),getattr(u,'last_name',None),time.time(),chat))
 
 def record(m):
     u = m.from_user
@@ -104,6 +126,11 @@ def record(m):
         (m.chat.id, u.id, user_name(u), u.username))
         c.execute('INSERT INTO message_events(chat_id,user_id,created_at) VALUES(?,?,?)', (m.chat.id, u.id, time.time()))
         c.execute('DELETE FROM message_events WHERE created_at < ?', (time.time() - 30*86400,))
+        c.execute('''INSERT INTO global_users(user_id,name,username,first_name,last_name,last_seen,last_chat)
+            VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+            name=excluded.name,username=excluded.username,first_name=excluded.first_name,
+            last_name=excluded.last_name,last_seen=excluded.last_seen,last_chat=excluded.last_chat''',
+            (u.id,user_name(u),u.username,getattr(u,'first_name',None),getattr(u,'last_name',None),time.time(),m.chat.id))
 
 def warn_count(chat, uid):
     with DB_LOCK, connect() as c:
@@ -134,7 +161,7 @@ def target_id(m):
     if token.startswith('@'):
         username = token[1:].lstrip('@').lower()
         with DB_LOCK, connect() as c:
-            r = c.execute('SELECT user_id FROM stats WHERE chat_id=? AND lower(username)=?', (m.chat.id, username)).fetchone()
+            r = c.execute('SELECT user_id FROM global_users WHERE lower(username)=?', (username)).fetchone()
         return r['user_id'] if r else None
     return None
 
@@ -294,6 +321,59 @@ def profile(m):
     out = io.BytesIO(); out.name = 'profile.png'; img.save(out, 'PNG'); out.seek(0)
     bot.send_photo(m.chat.id, out, reply_to_message_id=m.message_id)
 
+@bot.message_handler(commands=['info'])
+def info(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /info in a group.')
+    uid = target_id(m) if (m.reply_to_message or len((m.text or '').split()) > 1) else (m.from_user.id if m.from_user else None)
+    if not uid and not (m.reply_to_message or len((m.text or '').split()) > 1):
+        return bot.reply_to(m, 'Could not identify that member. Reply to them or use /info @username or /info USER_ID.')
+    with DB_LOCK, connect() as c:
+        row = c.execute('SELECT * FROM global_users WHERE user_id=?', (uid,)).fetchone()
+    if not row:
+        return bot.reply_to(m, 'No saved details for this member yet. The bot must have seen them in a group first.')
+    seen = time.strftime('%d %b %Y, %I:%M %p', time.localtime(row['last_seen'] or 0)) if row['last_seen'] else 'Unknown'
+    username = '@' + row['username'] if row['username'] else 'Not set'
+    full_name = row['name'] or 'Unknown'
+    bot.reply_to(m, f'👤 <b>Member Info</b>\nName: {esc(full_name)}\nUsername: {esc(username)}\nUser ID: <code>{uid}</code>\nLast seen by bot: <b>{esc(seen)}</b>')
+
+TRUTHS = [
+    'What is your most embarrassing moment?',
+    'What is one secret talent you have?',
+    'Who was your first crush?',
+    'What is the funniest lie you have ever told?',
+    'What is one thing you are afraid to admit?',
+    'What is your biggest silly habit?',
+    'If you could change one decision, what would it be?',
+    'What is the most childish thing you still do?',
+    'Who in this group makes you laugh the most?',
+    'What is something you have never told anyone here?'
+]
+DARES = [
+    'Send your last used emoji.',
+    'Talk only in emojis for your next 3 messages.',
+    'Give a genuine compliment to someone in this group.',
+    'Share a funny sticker.',
+    'Write your name backwards.',
+    'Tell a clean joke in the group.',
+    'Use a dramatic movie dialogue in your next message.',
+    'Let the group choose a nickname for you for 10 minutes.',
+    'Send a voice note saying “Mishra Robot is the best!”',
+    'Describe your day using exactly 5 words.'
+]
+
+@bot.message_handler(commands=['truth', 'dare', 'truthdare'])
+def truth_dare(m):
+    cmd = (m.text or '').split()[0].split('@')[0].lower()
+    if cmd == '/truth':
+        kind, prompt = 'TRUTH', random.choice(TRUTHS)
+    elif cmd == '/dare':
+        kind, prompt = 'DARE', random.choice(DARES)
+    else:
+        kind = random.choice(['TRUTH', 'DARE'])
+        prompt = random.choice(TRUTHS if kind == 'TRUTH' else DARES)
+    bot.reply_to(m, f'🎲 <b>{kind} TIME!</b>\n{esc(prompt)}')
+
 @bot.message_handler(commands=['ship'])
 def ship(m):
     if not group(m): return bot.reply_to(m, 'Use this command in a group.')
@@ -333,16 +413,19 @@ def afk(m):
     raw = (m.text or '').split(maxsplit=1)
     reason = raw[1].strip() if len(raw) > 1 else 'AFK'
     reason = reason[:250]
+    now = time.time()
     with DB_LOCK, connect() as c:
-        c.execute('INSERT INTO afk VALUES(?,?,?,?) ON CONFLICT(chat_id,user_id) DO UPDATE SET reason=excluded.reason,since=excluded.since', (m.chat.id, m.from_user.id, reason, time.time()))
+        c.execute('INSERT INTO global_afk VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET reason=excluded.reason,since=excluded.since', (m.from_user.id, reason, now))
+        c.execute('DELETE FROM afk WHERE user_id=?', (m.from_user.id,))
     bot.reply_to(m, f'💤 <a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a> is now AFK.\nReason: {esc(reason)}')
 
 @bot.message_handler(commands=['back'])
 def back(m):
     if not m.from_user: return
     with DB_LOCK, connect() as c:
-        old = c.execute('SELECT since FROM afk WHERE chat_id=? AND user_id=?', (m.chat.id, m.from_user.id)).fetchone()
-        c.execute('DELETE FROM afk WHERE chat_id=? AND user_id=?', (m.chat.id, m.from_user.id))
+        old = c.execute('SELECT since FROM global_afk WHERE user_id=?', (m.from_user.id,)).fetchone()
+        c.execute('DELETE FROM global_afk WHERE user_id=?', (m.from_user.id,))
+        c.execute('DELETE FROM afk WHERE user_id=?', (m.from_user.id,))
     if old: bot.reply_to(m, f'👋 Welcome back, {esc(user_name(m.from_user))}! You were away for <b>{duration_text(time.time()-old["since"])}</b>.')
     else: bot.reply_to(m, 'You were not marked AFK.')
 
@@ -599,9 +682,25 @@ def purge(m):
     if start >= end: return bot.reply_to(m, 'The replied message must be older than /purge.')
     if end - start > MAX_PURGE: return bot.reply_to(m, f'Limit is {MAX_PURGE} message IDs per purge. Run multiple purges for larger ranges.')
     count = 0
-    for mid in range(start, end + 1):
-        try: bot.delete_message(m.chat.id, mid); count += 1
-        except Exception: pass
+    message_ids = list(range(start, end + 1))
+    batch_delete = getattr(bot, 'delete_messages', None)
+    if callable(batch_delete):
+        for offset in range(0, len(message_ids), 100):
+            batch = message_ids[offset:offset + 100]
+            try:
+                result = batch_delete(m.chat.id, batch)
+                count += sum(bool(x) for x in result) if isinstance(result, (list, tuple)) else len(batch)
+            except Exception:
+                # Fall back per message for this batch if the installed library/API wrapper rejects bulk deletion.
+                for mid in batch:
+                    try:
+                        bot.delete_message(m.chat.id, mid); count += 1
+                    except Exception:
+                        pass
+    else:
+        for mid in message_ids:
+            try: bot.delete_message(m.chat.id, mid); count += 1
+            except Exception: pass
     status = bot.send_message(m.chat.id, f'🧹 Deleted {count} messages.')
     threading.Timer(5, lambda: safe_delete(m.chat.id, status.message_id)).start()
     log_action(m.chat.id, f'Purge attempted range {start}-{end}; deleted {count}.')
@@ -886,8 +985,10 @@ def monitor(m):
                 break
     # Remove AFK when the member speaks again.
     with DB_LOCK, connect() as c:
-        away = c.execute('SELECT reason,since FROM afk WHERE chat_id=? AND user_id=?', (chat,uid)).fetchone()
-        if away: c.execute('DELETE FROM afk WHERE chat_id=? AND user_id=?', (chat,uid))
+        away = c.execute('SELECT reason,since FROM global_afk WHERE user_id=?', (uid,)).fetchone()
+        if away:
+            c.execute('DELETE FROM global_afk WHERE user_id=?', (uid,))
+            c.execute('DELETE FROM afk WHERE user_id=?', (uid,))
     if away:
         AFK_NOTICE.pop((chat,uid), None)
         bot.reply_to(m, f'👋 Welcome back {esc(user_name(m.from_user))}! Away for <b>{duration_text(time.time()-away["since"])}</b>.')
@@ -901,13 +1002,13 @@ def monitor(m):
         elif ent.type == 'mention':
             username = body[ent.offset:ent.offset+ent.length].lstrip('@').lower()
             with DB_LOCK, connect() as c:
-                r = c.execute('SELECT user_id,name,username FROM stats WHERE chat_id=? AND lower(username)=?', (chat,username)).fetchone()
+                r = c.execute('SELECT user_id,name,username FROM global_users WHERE lower(username)=?', (username)).fetchone()
             if r:
                 class CachedUser: pass
                 u = CachedUser(); u.id=r['user_id']; u.first_name=r['name']; u.username=r['username']; targets[u.id]=u
     for target_id_value, target in targets.items():
         with DB_LOCK, connect() as c:
-            af = c.execute('SELECT reason,since FROM afk WHERE chat_id=? AND user_id=?', (chat,target_id_value)).fetchone()
+            af = c.execute('SELECT reason,since FROM global_afk WHERE user_id=?', (target_id_value)).fetchone()
         if not af: continue
         key = (chat,target_id_value,uid); now = time.time()
         if now - AFK_NOTICE.get(key, 0) < 60: continue

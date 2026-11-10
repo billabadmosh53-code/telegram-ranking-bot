@@ -1,8 +1,8 @@
-"""MishraRobot V3 - Telegram group management bot.
+"""Mishra Guard Robot V4 - Telegram group management bot.
 Required env: BOT_TOKEN. Optional: PORT, DATABASE_PATH, GROQ_API_KEY, GROQ_MODEL.
 Run exactly one polling instance per token. Render: one Web Service instance.
 """
-import os, io, re, time, json, random, sqlite3, threading, logging
+import os, io, re, time, json, random, sqlite3, threading, logging, tempfile
 from datetime import date
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,8 +46,11 @@ def init_db():
         CREATE TABLE IF NOT EXISTS antispam_approved(chat_id INTEGER,user_id INTEGER,PRIMARY KEY(chat_id,user_id));
         CREATE TABLE IF NOT EXISTS afk(chat_id INTEGER,user_id INTEGER,reason TEXT,since REAL,PRIMARY KEY(chat_id,user_id));
         CREATE TABLE IF NOT EXISTS ships(chat_id INTEGER,day TEXT,user1 INTEGER,user2 INTEGER,name1 TEXT,name2 TEXT,pct INTEGER,PRIMARY KEY(chat_id,day));
-        CREATE TABLE IF NOT EXISTS global_afk(user_id INTEGER PRIMARY KEY,reason TEXT,since REAL);
+        CREATE TABLE IF NOT EXISTS global_afk(user_id INTEGER PRIMARY KEY,reason TEXT,since REAL,media_type TEXT DEFAULT '',media_file_id TEXT DEFAULT '');
+        CREATE TABLE IF NOT EXISTS lock_approved(chat_id INTEGER,user_id INTEGER,approved_by INTEGER,created_at REAL,PRIMARY KEY(chat_id,user_id));
+        CREATE TABLE IF NOT EXISTS wallet(user_id INTEGER PRIMARY KEY,coins INTEGER NOT NULL DEFAULT 0,last_daily TEXT DEFAULT '');
         CREATE TABLE IF NOT EXISTS global_users(user_id INTEGER PRIMARY KEY,name TEXT,username TEXT,first_name TEXT,last_name TEXT,last_seen REAL,last_chat INTEGER);
+        CREATE TABLE IF NOT EXISTS xp_stats(chat_id INTEGER,user_id INTEGER,xp INTEGER NOT NULL DEFAULT 0,last_award REAL NOT NULL DEFAULT 0,PRIMARY KEY(chat_id,user_id));
         ''')
         # Migrate previously saved group AFK statuses and member records.
         c.execute('''INSERT INTO global_afk(user_id,reason,since)
@@ -70,6 +73,9 @@ def init_db():
             c.execute("ALTER TABLE filters ADD COLUMN response_type TEXT DEFAULT 'text'")
         if 'file_id' not in cols:
             c.execute("ALTER TABLE filters ADD COLUMN file_id TEXT DEFAULT ''")
+        afk_cols = {r['name'] for r in c.execute('PRAGMA table_info(global_afk)').fetchall()}
+        if 'media_type' not in afk_cols: c.execute("ALTER TABLE global_afk ADD COLUMN media_type TEXT DEFAULT ''")
+        if 'media_file_id' not in afk_cols: c.execute("ALTER TABLE global_afk ADD COLUMN media_file_id TEXT DEFAULT ''")
 
 def setting(chat, key, default='off'):
     with DB_LOCK, connect() as c:
@@ -131,6 +137,10 @@ def record(m):
             name=excluded.name,username=excluded.username,first_name=excluded.first_name,
             last_name=excluded.last_name,last_seen=excluded.last_seen,last_chat=excluded.last_chat''',
             (u.id,user_name(u),u.username,getattr(u,'first_name',None),getattr(u,'last_name',None),time.time(),m.chat.id))
+        now = time.time()
+        c.execute('INSERT OR IGNORE INTO xp_stats(chat_id,user_id,xp,last_award) VALUES(?,?,0,0)', (m.chat.id, u.id))
+        c.execute('UPDATE xp_stats SET xp=xp+1,last_award=? WHERE chat_id=? AND user_id=? AND last_award<=?',
+                  (now, m.chat.id, u.id, now-60))
 
 def warn_count(chat, uid):
     with DB_LOCK, connect() as c:
@@ -186,7 +196,7 @@ class Health(BaseHTTPRequestHandler):
         if path not in ('/', '/health', '/healthz'):
             body = b'Not found'; self.send_response(404)
         else:
-            body = b'MishraRobot V3 is running'; self.send_response(200)
+            body = b'Mishra Guard Robot V4 is running'; self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
@@ -203,12 +213,15 @@ def health_server():
     server.serve_forever()
 
 # ---------------- HELP ----------------
-HELP = '''🤖 <b>MISHRA ROBOT V3</b>
+HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 
 <b>Stats & Fun</b>
 /top /ranking — overall, weekly & daily leaderboard
 /stats /mystats — your stats and warnings
 /profile — profile card
+/level — XP, level & group XP leaderboard
+/coins /daily — wallet and daily reward
+/download URL — supported public media
 /ship — daily couple
 /challenge — random challenge
 /afk [reason] /back — AFK status
@@ -222,6 +235,7 @@ HELP = '''🤖 <b>MISHRA ROBOT V3</b>
 <b>Complete lock controls</b>
 /lock [all|media|sticker|photo|video|gif|document|audio|voice|poll|webpreview]
 /unlock [all|media|sticker|photo|video|gif|document|audio|voice|poll|webpreview]
+/approve /unapprove /approved — lock whitelist
 
 <b>Filters & protection</b>
 /filter WORD response — text filter; reply to sticker/GIF with /filter WORD
@@ -429,12 +443,22 @@ def afk(m):
     if not m.from_user: return
     raw = (m.text or '').split(maxsplit=1)
     reason = raw[1].strip() if len(raw) > 1 else 'AFK'
+    media_type, media_file_id = '', ''
+    reply = m.reply_to_message
+    if reply:
+        if reply.sticker:
+            media_type, media_file_id = 'sticker', reply.sticker.file_id
+        elif reply.animation:
+            media_type, media_file_id = 'animation', reply.animation.file_id
     reason = reason[:250]
     now = time.time()
     with DB_LOCK, connect() as c:
-        c.execute('INSERT INTO global_afk VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET reason=excluded.reason,since=excluded.since', (m.from_user.id, reason, now))
+        c.execute('''INSERT INTO global_afk(user_id,reason,since,media_type,media_file_id) VALUES(?,?,?,?,?)
+          ON CONFLICT(user_id) DO UPDATE SET reason=excluded.reason,since=excluded.since,
+          media_type=excluded.media_type,media_file_id=excluded.media_file_id''',
+          (m.from_user.id, reason, now, media_type, media_file_id))
         c.execute('DELETE FROM afk WHERE user_id=?', (m.from_user.id,))
-    bot.reply_to(m, f'💤 <a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a> is now AFK.\nReason: {esc(reason)}')
+    bot.reply_to(m, f'💤 <a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a> is now AFK.\nReason: {esc(reason)}' + ('\nSaved sticker/GIF attached.' if media_file_id else ''))
 
 @bot.message_handler(commands=['back'])
 def back(m):
@@ -492,7 +516,7 @@ def anti(m):
         return bot.reply_to(m, '🛡️ Anti-spam disabled.')
     if not setting(m.chat.id, 'antispam_threshold', ''): set_setting(m.chat.id, 'antispam_threshold', '7')
     if not setting(m.chat.id, 'antispam_action', ''): set_setting(m.chat.id, 'antispam_action', 'mute')
-    bot.send_message(m.chat.id, '🛡️ <b>Anti-spam enabled.</b>\\nChoose the message threshold and action:', reply_markup=antispam_keyboard(m.chat.id))
+    bot.send_message(m.chat.id, '🛡️ <b>Anti-spam enabled.</b>\nChoose the message threshold and action:', reply_markup=antispam_keyboard(m.chat.id))
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('as:'))
 def antispam_callback(call):
@@ -510,9 +534,9 @@ def antispam_callback(call):
         else:
             return bot.answer_callback_query(call.id, 'Invalid setting.')
         bot.answer_callback_query(call.id, message)
-        bot.edit_message_text('🛡️ <b>Anti-spam settings</b>\\n'
-            f'Threshold: <b>{esc(setting(chat, "antispam_threshold", "7"))} messages</b>\\n'
-            f'Action: <b>{esc(setting(chat, "antispam_action", "mute")).upper()}</b>\\n'
+        bot.edit_message_text('🛡️ <b>Anti-spam settings</b>\n'
+            f'Threshold: <b>{esc(setting(chat, "antispam_threshold", "7"))} messages</b>\n'
+            f'Action: <b>{esc(setting(chat, "antispam_action", "mute")).upper()}</b>\n'
             'Use /antispam approve (reply/ID) to whitelist a member.',
             chat, call.message.message_id, reply_markup=antispam_keyboard(chat))
     except Exception:
@@ -586,7 +610,7 @@ def show_filters(m):
         kind = r['response_type'] or 'text'
         preview = r['response'][:100] if kind == 'text' else f'[{kind} response]'
         lines.append(f'• <code>{esc(r["keyword"])}</code> → {esc(preview)}')
-    bot.send_message(m.chat.id, '\\n'.join(lines))
+    bot.send_message(m.chat.id, '\n'.join(lines))
 
 @bot.message_handler(commands=['stopfilter'])
 def remove_filter(m):
@@ -606,7 +630,7 @@ def permissions_dict(perms):
 def apply_lock(m, cmd, mode):
     chat = m.chat.id
     current = bot.get_chat(chat).permissions
-    if cmd == 'lock' and mode == 'all':
+    if cmd == 'lock' and mode == 'all' and not setting(chat, 'saved_permissions', ''):
         set_setting(chat, 'saved_permissions', json.dumps(permissions_dict(current)))
     base = permissions_dict(current)
     if not base:
@@ -644,6 +668,8 @@ def apply_unlock(m, mode):
         for k in ('can_send_messages','can_send_audios','can_send_documents','can_send_photos','can_send_videos','can_send_video_notes','can_send_voice_notes','can_send_polls','can_send_other_messages','can_add_web_page_previews'):
             base.setdefault(k, True)
         bot.set_chat_permissions(chat, types.ChatPermissions(**base))
+        with DB_LOCK, connect() as c:
+            c.execute('DELETE FROM settings WHERE chat_id=? AND key=?', (chat, 'saved_permissions'))
         return
     current = permissions_dict(bot.get_chat(chat).permissions)
     if not current: current = {k: True for k in PERMISSION_FIELDS}
@@ -659,6 +685,38 @@ def apply_unlock(m, mode):
     elif mode == 'webpreview': current['can_add_web_page_previews'] = True
     else: raise ValueError('Unknown unlock type')
     bot.set_chat_permissions(chat, types.ChatPermissions(**current))
+
+def is_lock_approved(chat, uid):
+    with DB_LOCK, connect() as c:
+        return c.execute('SELECT 1 FROM lock_approved WHERE chat_id=? AND user_id=?', (chat,uid)).fetchone() is not None
+
+@bot.message_handler(commands=['approve','unapprove','approved'])
+def lock_approval(m):
+    if not need_admin(m): return
+    cmd=(m.text or '').split()[0].split('@')[0][1:].lower()
+    target=target_id(m)
+    if cmd == 'approved':
+        with DB_LOCK, connect() as c:
+            rows=c.execute('SELECT user_id FROM lock_approved WHERE chat_id=? ORDER BY created_at', (m.chat.id,)).fetchall()
+        if not rows: return bot.reply_to(m,'No approved members yet.')
+        return bot.reply_to(m,'✅ Approved members:\n'+'\n'.join(f'<a href="tg://user?id={r["user_id"]}">{r["user_id"]}</a>' for r in rows))
+    if not target: return bot.reply_to(m, f'Reply to a user with /{cmd}.')
+    if cmd == 'approve':
+        with DB_LOCK, connect() as c:
+            c.execute('INSERT OR REPLACE INTO lock_approved VALUES(?,?,?,?)',(m.chat.id,target,m.from_user.id,time.time()))
+        try:
+            bot.restrict_chat_member(m.chat.id,target,permissions=types.ChatPermissions(can_send_messages=True,can_send_audios=True,can_send_documents=True,can_send_photos=True,can_send_videos=True,can_send_video_notes=True,can_send_voice_notes=True,can_send_polls=True,can_send_other_messages=True,can_add_web_page_previews=True))
+        except Exception:
+            log.exception('Could not lift restrictions for approved user')
+        return bot.reply_to(m, f'✅ Approved <code>{target}</code> for this group.')
+    with DB_LOCK, connect() as c:
+        c.execute('DELETE FROM lock_approved WHERE chat_id=? AND user_id=?',(m.chat.id,target))
+    try:
+        defaults=bot.get_chat(m.chat.id).permissions
+        bot.restrict_chat_member(m.chat.id,target,permissions=defaults or types.ChatPermissions(can_send_messages=False))
+    except Exception:
+        log.exception('Could not reapply group default permissions after unapprove')
+    return bot.reply_to(m, f'❎ Removed approval for <code>{target}</code>. Group default permissions have been reapplied where Telegram allows.')
 
 @bot.message_handler(commands=['lock', 'unlock'])
 def lock(m):
@@ -952,6 +1010,113 @@ def ai(m):
         log.exception('Groq AI error')
         bot.reply_to(m, 'AI request failed. Check GROQ_API_KEY, GROQ_MODEL, and Render logs: ' + esc(e)[:200])
 
+# ---------------- XP / LEVELS ----------------
+def xp_level(points):
+    points = max(0, int(points))
+    level = 1
+    remaining = points
+    while remaining >= level * 100:
+        remaining -= level * 100
+        level += 1
+    return level, remaining, level * 100
+
+@bot.message_handler(commands=['level', 'levels'])
+def level_cmd(m):
+    if not m.from_user:
+        return
+    if not group(m):
+        return bot.reply_to(m, 'Use /level in a group.')
+    with DB_LOCK, connect() as c:
+        row = c.execute('SELECT xp FROM xp_stats WHERE chat_id=? AND user_id=?',
+                        (m.chat.id, m.from_user.id)).fetchone()
+        top = c.execute('SELECT user_id,xp FROM xp_stats WHERE chat_id=? ORDER BY xp DESC LIMIT 10',
+                        (m.chat.id,)).fetchall()
+    points = row['xp'] if row else 0
+    level, progress, needed = xp_level(points)
+    lines = [
+        f'⭐ <b>{esc(user_name(m.from_user))}</b> — Level <b>{level}</b>',
+        f'XP: <b>{points}</b> · Next level: <b>{progress}/{needed}</b>',
+        '',
+        '<b>🏆 Group XP leaderboard</b>'
+    ]
+    for rank, item in enumerate(top, 1):
+        lines.append(f'{rank}. <a href="tg://user?id={item["user_id"]}">Member</a> — {item["xp"]} XP')
+    bot.reply_to(m, '\n'.join(lines))
+
+# ---------------- SIMPLE COINS / DAILY REWARDS ----------------
+@bot.message_handler(commands=['coins','balance'])
+def coins(m):
+    if not m.from_user: return
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)',(m.from_user.id,''))
+        row=c.execute('SELECT coins FROM wallet WHERE user_id=?',(m.from_user.id,)).fetchone()
+    bot.reply_to(m,f'🪙 {esc(user_name(m.from_user))}, your balance is <b>{row["coins"]}</b> coins.')
+
+@bot.message_handler(commands=['daily'])
+def daily_reward(m):
+    if not m.from_user: return
+    today=date.today().isoformat()
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)',(m.from_user.id,''))
+        row=c.execute('SELECT coins,last_daily FROM wallet WHERE user_id=?',(m.from_user.id,)).fetchone()
+        if row['last_daily']==today:
+            return bot.reply_to(m,'🎁 You have already claimed today’s reward. Come back tomorrow!')
+        reward=random.randint(20,50)
+        c.execute('UPDATE wallet SET coins=coins+?,last_daily=? WHERE user_id=?',(reward,today,m.from_user.id))
+    bot.reply_to(m,f'🎁 Daily reward: <b>+{reward} coins</b>! Use /coins to check your balance.')
+
+# ---------------- PUBLIC MEDIA DOWNLOADER ----------------
+@bot.message_handler(commands=['download','dl'])
+def download_media(m):
+    parts=(m.text or '').split(maxsplit=1)
+    if len(parts)<2:
+        return bot.reply_to(m,'Usage: /download https://public-content-url')
+    url=parts[1].strip()
+    if not re.match(r'^https?://',url,re.I):
+        return bot.reply_to(m,'Please send a valid http/https URL.')
+    status=bot.reply_to(m,'⬇️ Checking public media link…')
+    temp_dir=None
+    try:
+        import yt_dlp
+        temp_dir=tempfile.mkdtemp(prefix='mishra_dl_')
+        opts={
+            'outtmpl': os.path.join(temp_dir,'%(title).80s.%(ext)s'),
+            'format':'best[filesize<45M][ext=mp4]/best[filesize_approx<45M]/best',
+            'noplaylist':True, 'max_filesize':45*1024*1024,
+            'socket_timeout':20, 'retries':1, 'fragment_retries':1,
+            'quiet':True, 'no_warnings':True,
+            'restrictfilenames':True,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info=ydl.extract_info(url,download=True)
+            path=ydl.prepare_filename(info)
+        if not os.path.isfile(path):
+            candidates=[os.path.join(temp_dir,x) for x in os.listdir(temp_dir)]
+            candidates=[x for x in candidates if os.path.isfile(x)]
+            if not candidates: raise RuntimeError('No downloadable media was returned.')
+            path=max(candidates,key=os.path.getsize)
+        size=os.path.getsize(path)
+        if size>49*1024*1024:
+            raise RuntimeError('File is larger than the safe Telegram upload limit (49 MB).')
+        caption='📥 '+esc(info.get('title') or 'Downloaded media')[:900]
+        ext=os.path.splitext(path)[1].lower()
+        with open(path,'rb') as media:
+            if ext in ('.mp4','.m4v','.mov','.webm'):
+                bot.send_video(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
+            elif ext in ('.mp3','.m4a','.aac','.ogg','.opus','.wav'):
+                bot.send_audio(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
+            else:
+                bot.send_document(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
+        try: bot.delete_message(m.chat.id,status.message_id)
+        except Exception: pass
+    except Exception as e:
+        log.exception('Downloader failed')
+        bot.reply_to(m,'❌ Download failed. The site may be unsupported, private/login-restricted, DRM-protected, unavailable, or the file may exceed the size limit. Only download content you own or are authorized to save.\n'+esc(str(e))[:500])
+    finally:
+        if temp_dir:
+            import shutil
+            shutil.rmtree(temp_dir,ignore_errors=True)
+
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
 def monitor(m):
@@ -1002,7 +1167,7 @@ def monitor(m):
                 break
     # Remove AFK when the member speaks again.
     with DB_LOCK, connect() as c:
-        away = c.execute('SELECT reason,since FROM global_afk WHERE user_id=?', (uid,)).fetchone()
+        away = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (uid,)).fetchone()
         if away:
             c.execute('DELETE FROM global_afk WHERE user_id=?', (uid,))
             c.execute('DELETE FROM afk WHERE user_id=?', (uid,))
@@ -1025,20 +1190,23 @@ def monitor(m):
                 u = CachedUser(); u.id=r['user_id']; u.first_name=r['name']; u.username=r['username']; targets[u.id]=u
     for target_id_value, target in targets.items():
         with DB_LOCK, connect() as c:
-            af = c.execute('SELECT reason,since FROM global_afk WHERE user_id=?', (target_id_value)).fetchone()
+            af = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (target_id_value)).fetchone()
         if not af: continue
         key = (chat,target_id_value,uid); now = time.time()
         if now - AFK_NOTICE.get(key, 0) < 60: continue
         AFK_NOTICE[key] = now
         try:
             bot.reply_to(m, f'💤 <a href="tg://user?id={target_id_value}">{esc(user_name(target))}</a> is AFK: <b>{esc(af["reason"])}</b> · {duration_text(now-af["since"])}')
+            if af['media_file_id']:
+                if af['media_type'] == 'sticker': bot.send_sticker(chat, af['media_file_id'], reply_to_message_id=m.message_id)
+                elif af['media_type'] == 'animation': bot.send_animation(chat, af['media_file_id'], reply_to_message_id=m.message_id)
         except Exception: log.exception('AFK notice failed')
 
 # ---------------- STARTUP ----------------
 def main():
     init_db()
     threading.Thread(target=health_server, daemon=True, name='health-server').start()
-    log.info('MishraRobot V3 started; health server on port %s', PORT)
+    log.info('Mishra Guard Robot V4 started; health server on port %s', PORT)
     # One Render instance and one polling process per BOT_TOKEN only.
     while True:
         try:

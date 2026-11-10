@@ -28,6 +28,17 @@ AFK_NOTICE = {}  # (chat_id, afk_user_id, viewer_id) -> last notification time
 URL_RE = re.compile(r'(https?://|www\.|t\.me/|telegram\.me/)', re.I)
 PRIVATE_HOSTS = re.compile(r'^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0|\[::1\])', re.I)
 MAX_PURGE = 5000
+COOKIES_DATA = os.getenv('INSTAGRAM_COOKIES', '').strip()
+COOKIE_FILE_PATH = None
+if COOKIES_DATA:
+    try:
+        cf = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8', suffix='.txt')
+        cf.write(COOKIES_DATA)
+        cf.close()
+        COOKIE_FILE_PATH = cf.name
+    except Exception:
+        pass
+
 
 # ---------------- DATABASE ----------------
 def connect():
@@ -1110,14 +1121,45 @@ AUTO_MEDIA_DOMAINS = re.compile(
     re.I
 )
 
+def get_public_api_media(url):
+    import urllib.request, json
+    cobalt_endpoints = [
+        'https://co.wuk.sh/api/json',
+        'https://cobalt-api.kwiatekm.tokyo/api/json',
+        'https://api.cobalt.tools/api/json',
+        'https://cobalt.xy24.eu/api/json'
+    ]
+    for endpoint in cobalt_endpoints:
+        try:
+            req_data = json.dumps({'url': url, 'videoQuality': '720'}).encode('utf-8')
+            req = urllib.request.Request(endpoint, data=req_data, headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'MishraRobot/4.0'
+            })
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res_json = json.loads(response.read().decode('utf-8'))
+                if res_json.get('status') in ('tunnel', 'redirect', 'stream'):
+                    direct_url = res_json.get('url')
+                    if direct_url:
+                        return ('video', direct_url)
+                elif res_json.get('status') == 'picker':
+                    picker = res_json.get('picker', [])
+                    if picker and picker[0].get('url'):
+                        p_type = 'photo' if picker[0].get('type') == 'photo' else 'video'
+                        return (p_type, picker[0]['url'])
+        except Exception:
+            continue
+    return None
+
 def get_instagram_direct_media(url):
-    import re, urllib.request, json
+    import re, urllib.request
     m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
     if not m:
         return None
     shortcode = m.group(1)
 
-    # Source 1: FixInstagram / DDInstagram / Instagramez (Best for Telegram bots)
+    # FixInstagram / DDInstagram / Instagramez
     mirrors = [
         f'https://www.ddinstagram.com/reel/{shortcode}/',
         f'https://www.instagramez.com/reel/{shortcode}/',
@@ -1148,56 +1190,7 @@ def get_instagram_direct_media(url):
         except Exception:
             continue
 
-    # Source 2: Instagram Embed page
-    embed_url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
-    headers_browser = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    }
-    try:
-        req = urllib.request.Request(embed_url, headers=headers_browser)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            html = resp.read().decode('utf-8', errors='ignore')
-            v_match = re.search(r'class="EmbeddedVideo"[^>]*src="([^"]+)"', html) or re.search(r'"video_url"\s*:\s*"([^"]+)"', html)
-            if v_match:
-                v_url = v_match.group(1).replace('\\u0026', '&').replace('&amp;', '&')
-                return ('video', v_url)
-            i_match = re.search(r'class="EmbeddedImage"[^>]*src="([^"]+)"', html) or re.search(r'"display_url"\s*:\s*"([^"]+)"', html)
-            if i_match:
-                i_url = i_match.group(1).replace('\\u0026', '&').replace('&amp;', '&')
-                return ('photo', i_url)
-    except Exception:
-        pass
-
-    # Source 3: Cobalt public instances
-    cobalt_endpoints = [
-        'https://co.wuk.sh/api/json',
-        'https://cobalt-api.kwiatekm.tokyo/api/json',
-        'https://api.cobalt.tools/api/json'
-    ]
-    for endpoint in cobalt_endpoints:
-        try:
-            req_data = json.dumps({'url': url, 'videoQuality': '720'}).encode('utf-8')
-            req = urllib.request.Request(endpoint, data=req_data, headers={
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'MishraRobot/4.0'
-            })
-            with urllib.request.urlopen(req, timeout=6) as response:
-                res_json = json.loads(response.read().decode('utf-8'))
-                if res_json.get('status') in ('tunnel', 'redirect', 'stream'):
-                    direct_url = res_json.get('url')
-                    if direct_url:
-                        return ('video', direct_url)
-                elif res_json.get('status') == 'picker':
-                    picker = res_json.get('picker', [])
-                    if picker and picker[0].get('url'):
-                        p_type = 'photo' if picker[0].get('type') == 'photo' else 'video'
-                        return (p_type, picker[0]['url'])
-        except Exception:
-            continue
-
-    return None
+    return get_public_api_media(url)
 
 def run_media_downloader(chat_id, message_id, url):
     safe, err_msg = is_safe_download_url(url)
@@ -1222,7 +1215,7 @@ def run_media_downloader(chat_id, message_id, url):
             except Exception: pass
             return
 
-        # 2. Instagram 429 Bypass Fallback
+        # 2. Instagram dedicated bypass
         if 'instagram.com' in url.lower():
             ig_res = get_instagram_direct_media(url)
             if ig_res:
@@ -1242,7 +1235,7 @@ def run_media_downloader(chat_id, message_id, url):
                 except Exception: pass
                 return
 
-        # 3. General / Social Media extractor using yt-dlp
+        # 3. yt-dlp with datacenter bot-check bypass for YouTube
         import yt_dlp
         opts = {
             'outtmpl': os.path.join(temp_dir, '%(title).80s.%(ext)s'),
@@ -1254,20 +1247,46 @@ def run_media_downloader(chat_id, message_id, url):
             'quiet': True,
             'no_warnings': True,
             'restrictfilenames': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios', 'mweb']
+                }
+            }
         }
+        if COOKIE_FILE_PATH and os.path.exists(COOKIE_FILE_PATH):
+            opts['cookiefile'] = COOKIE_FILE_PATH
         
         info = None
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            try:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-            except Exception:
-                # Retry with image/thumbnail extraction if video format was not found (e.g. photo posts)
-                opts_img = dict(opts)
-                opts_img['writethumbnail'] = True
-                opts_img['skip_download'] = False
-                opts_img.pop('format', None)
-                with yt_dlp.YoutubeDL(opts_img) as ydl_retry:
-                    info = ydl_retry.extract_info(url, download=True)
+        except Exception as yt_err:
+            err_str = str(yt_err).lower()
+            # If YouTube/platform blocks with bot check or 429, try public API fallback
+            if 'sign in to confirm' in err_str or '429' in err_str or 'bot' in err_str:
+                fallback_res = get_public_api_media(url)
+                if fallback_res:
+                    m_type, m_url = fallback_res
+                    import urllib.request
+                    req = urllib.request.Request(m_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        m_data = resp.read(48 * 1024 * 1024)
+                    buf = io.BytesIO(m_data)
+                    buf.name = 'media.mp4' if m_type == 'video' else 'media.jpg'
+                    if m_type == 'video':
+                        bot.send_video(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
+                    else:
+                        bot.send_photo(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
+                    try: bot.delete_message(chat_id, status.message_id)
+                    except Exception: pass
+                    return
+            # Try image/thumbnail extraction
+            opts_img = dict(opts)
+            opts_img['writethumbnail'] = True
+            opts_img['skip_download'] = False
+            opts_img.pop('format', None)
+            with yt_dlp.YoutubeDL(opts_img) as ydl_retry:
+                info = ydl_retry.extract_info(url, download=True)
 
         candidates = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir)]
         candidates = [x for x in candidates if os.path.isfile(x)]

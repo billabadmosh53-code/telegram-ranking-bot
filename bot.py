@@ -1116,24 +1116,52 @@ def get_instagram_direct_media(url):
     if not m:
         return None
     shortcode = m.group(1)
-    
-    # Method 1: Instagram Embed Page (Frequently bypasses datacenter IP 429)
+
+    # Source 1: FixInstagram / DDInstagram / Instagramez (Best for Telegram bots)
+    mirrors = [
+        f'https://www.ddinstagram.com/reel/{shortcode}/',
+        f'https://www.instagramez.com/reel/{shortcode}/',
+        f'https://www.ddinstagram.com/p/{shortcode}/',
+        f'https://www.instagramez.com/p/{shortcode}/'
+    ]
+    headers_bot = {
+        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+    for mirror_url in mirrors:
+        try:
+            req = urllib.request.Request(mirror_url, headers=headers_bot)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode('utf-8', errors='ignore')
+                v_match = re.search(r'<meta\s+property="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
+                          re.search(r'<meta\s+content="([^"]+)"\s+property="og:video(?::secure_url)?"', html, re.I)
+                if v_match:
+                    v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
+                    if v_url.startswith('http'):
+                        return ('video', v_url)
+                img_match = re.search(r'<meta\s+property="og:image(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
+                            re.search(r'<meta\s+content="([^"]+)"\s+property="og:image(?::secure_url)?"', html, re.I)
+                if img_match:
+                    img_url = img_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
+                    if img_url.startswith('http') and 'instagram' in img_url:
+                        return ('photo', img_url)
+        except Exception:
+            continue
+
+    # Source 2: Instagram Embed page
     embed_url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
-    headers = {
+    headers_browser = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
     }
     try:
-        req = urllib.request.Request(embed_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        req = urllib.request.Request(embed_url, headers=headers_browser)
+        with urllib.request.urlopen(req, timeout=8) as resp:
             html = resp.read().decode('utf-8', errors='ignore')
-            # Look for video URL
             v_match = re.search(r'class="EmbeddedVideo"[^>]*src="([^"]+)"', html) or re.search(r'"video_url"\s*:\s*"([^"]+)"', html)
             if v_match:
                 v_url = v_match.group(1).replace('\\u0026', '&').replace('&amp;', '&')
                 return ('video', v_url)
-            # Look for image URL
             i_match = re.search(r'class="EmbeddedImage"[^>]*src="([^"]+)"', html) or re.search(r'"display_url"\s*:\s*"([^"]+)"', html)
             if i_match:
                 i_url = i_match.group(1).replace('\\u0026', '&').replace('&amp;', '&')
@@ -1141,7 +1169,7 @@ def get_instagram_direct_media(url):
     except Exception:
         pass
 
-    # Method 2: Public fallback API (Cobalt instances for Instagram)
+    # Source 3: Cobalt public instances
     cobalt_endpoints = [
         'https://co.wuk.sh/api/json',
         'https://cobalt-api.kwiatekm.tokyo/api/json',
@@ -1155,7 +1183,7 @@ def get_instagram_direct_media(url):
                 'Content-Type': 'application/json',
                 'User-Agent': 'MishraRobot/4.0'
             })
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=6) as response:
                 res_json = json.loads(response.read().decode('utf-8'))
                 if res_json.get('status') in ('tunnel', 'redirect', 'stream'):
                     direct_url = res_json.get('url')
@@ -1168,6 +1196,7 @@ def get_instagram_direct_media(url):
                         return (p_type, picker[0]['url'])
         except Exception:
             continue
+
     return None
 
 def run_media_downloader(chat_id, message_id, url):

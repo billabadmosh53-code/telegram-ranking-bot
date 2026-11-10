@@ -1075,25 +1075,52 @@ def daily_reward(m):
     bot.reply_to(m,f'🎁 Daily reward: <b>+{reward} coins</b>! Use /coins to check your balance.')
 
 # ---------------- PUBLIC MEDIA DOWNLOADER ----------------
+def is_safe_download_url(url):
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme.lower() not in ('http', 'https'):
+            return False, 'Only HTTP/HTTPS URLs are allowed.'
+        hostname = (parsed.hostname or '').strip().lower()
+        if not hostname:
+            return False, 'Invalid URL host.'
+        if PRIVATE_HOSTS.match(hostname):
+            return False, 'Private and internal network URLs are blocked for security.'
+        try:
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                return False, 'Private and internal network URLs are blocked for security.'
+        except (socket.gaierror, socket.herror, OSError):
+            pass
+        return True, ''
+    except Exception:
+        return False, 'Malformed URL provided.'
+
 def is_direct_image_url(url):
     clean = url.split('?')[0].lower()
     return any(clean.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))
 
-@bot.message_handler(commands=['download','dl'])
-def download_media(m):
-    parts = (m.text or '').split(maxsplit=1)
-    if len(parts) < 2:
-        return bot.reply_to(m, 'Usage: /download https://public-content-url')
-    url = parts[1].strip()
+MEDIA_URL_REGEX = re.compile(
+    r'(https?://[^\s]+)',
+    re.I
+)
+
+AUTO_MEDIA_DOMAINS = re.compile(
+    r'https?://(?:www\.|vt\.|vm\.|m\.)?(?:instagram\.com/(?:reel|p|tv|share)/|youtu\.be/|youtube\.com/(?:watch|shorts|live)|tiktok\.com/|x\.com/\w+/status/|twitter\.com/\w+/status/|pinterest\.com/pin/|pin\.it/|facebook\.com/(?:reel/|watch|share)|fb\.watch/|reddit\.com/r/)[^\s]+',
+    re.I
+)
+
+def run_media_downloader(chat_id, message_id, url):
     safe, err_msg = is_safe_download_url(url)
     if not safe:
-        return bot.reply_to(m, f'⛔ {esc(err_msg)}')
-    status = bot.reply_to(m, '⬇️ Checking public media link…')
+        return bot.send_message(chat_id, f'⛔ {esc(err_msg)}', reply_to_message_id=message_id)
+
+    status = bot.send_message(chat_id, '⬇️ Checking public media link…', reply_to_message_id=message_id)
     temp_dir = None
     try:
         temp_dir = tempfile.mkdtemp(prefix='mishra_dl_')
 
-        # 1. Direct Image URL handler (fast and reliable)
+        # 1. Direct Image URL (fast fetch)
         if is_direct_image_url(url):
             import urllib.request
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -1101,8 +1128,8 @@ def download_media(m):
                 data = resp.read(20 * 1024 * 1024)
             img_io = io.BytesIO(data)
             img_io.name = 'downloaded_photo.jpg'
-            bot.send_photo(m.chat.id, img_io, caption='📥 Downloaded Photo', reply_to_message_id=m.message_id)
-            try: bot.delete_message(m.chat.id, status.message_id)
+            bot.send_photo(chat_id, img_io, caption='📥 Downloaded Photo', reply_to_message_id=message_id)
+            try: bot.delete_message(chat_id, status.message_id)
             except Exception: pass
             return
 
@@ -1124,8 +1151,8 @@ def download_media(m):
         with yt_dlp.YoutubeDL(opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=True)
-            except Exception as dl_err:
-                # If video extraction fails, retry with thumbnail/image extraction (e.g. for image posts)
+            except Exception:
+                # Retry with image/thumbnail extraction if video format was not found (e.g. photo posts)
                 opts_img = dict(opts)
                 opts_img['writethumbnail'] = True
                 opts_img['skip_download'] = False
@@ -1137,7 +1164,6 @@ def download_media(m):
         candidates = [x for x in candidates if os.path.isfile(x)]
         
         if not candidates:
-            # Check if info contains direct image or thumbnail URL
             thumb_url = None
             if isinstance(info, dict):
                 thumb_url = info.get('url') if str(info.get('url', '')).startswith('http') else info.get('thumbnail')
@@ -1149,13 +1175,12 @@ def download_media(m):
                 img_io = io.BytesIO(data)
                 img_io.name = 'photo.jpg'
                 caption = '📥 ' + esc(info.get('title') or 'Downloaded photo')[:900]
-                bot.send_photo(m.chat.id, img_io, caption=caption, reply_to_message_id=m.message_id)
-                try: bot.delete_message(m.chat.id, status.message_id)
+                bot.send_photo(chat_id, img_io, caption=caption, reply_to_message_id=message_id)
+                try: bot.delete_message(chat_id, status.message_id)
                 except Exception: pass
                 return
             raise RuntimeError('No downloadable media was returned.')
 
-        # Sort so video/audio is prioritized over small thumbnails if both exist
         def media_sort_key(file_path):
             e = os.path.splitext(file_path)[1].lower()
             if e in ('.mp4', '.m4v', '.mov', '.webm'): return (3, os.path.getsize(file_path))
@@ -1172,15 +1197,15 @@ def download_media(m):
         ext = os.path.splitext(path)[1].lower()
         with open(path, 'rb') as media:
             if ext in ('.mp4', '.m4v', '.mov', '.webm'):
-                bot.send_video(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+                bot.send_video(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
             elif ext in ('.jpg', '.jpeg', '.png', '.webp'):
-                bot.send_photo(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+                bot.send_photo(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
             elif ext in ('.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'):
-                bot.send_audio(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+                bot.send_audio(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
             else:
-                bot.send_document(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+                bot.send_document(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
 
-        try: bot.delete_message(m.chat.id, status.message_id)
+        try: bot.delete_message(chat_id, status.message_id)
         except Exception: pass
     except Exception as e:
         log.exception('Downloader failed')
@@ -1200,13 +1225,30 @@ def download_media(m):
                        'DRM-protected, unavailable, or the file may exceed the size limit. '
                        'Only download content you own or are authorized to save.\n' + esc(detail)[:350])
         try:
-            bot.edit_message_text(message, m.chat.id, status.message_id)
+            bot.edit_message_text(message, chat_id, status.message_id)
         except Exception:
-            bot.reply_to(m, message)
+            bot.send_message(chat_id, message, reply_to_message_id=message_id)
     finally:
         if temp_dir:
             import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+@bot.message_handler(commands=['download','dl'])
+def download_media(m):
+    parts = (m.text or '').split(maxsplit=1)
+    if len(parts) < 2:
+        return bot.reply_to(m, 'Usage: /download https://public-content-url')
+    url = parts[1].strip()
+    threading.Thread(target=run_media_downloader, args=(m.chat.id, m.message_id, url), daemon=True).start()
+
+@bot.message_handler(func=lambda m: not group(m) and bool(m.text), content_types=['text'])
+def pm_auto_download(m):
+    body = (m.text or '').strip()
+    media_match = AUTO_MEDIA_DOMAINS.search(body)
+    if media_match or is_direct_image_url(body):
+        dl_url = media_match.group(0) if media_match else body
+        threading.Thread(target=run_media_downloader, args=(m.chat.id, m.message_id, dl_url), daemon=True).start()
+
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
@@ -1241,6 +1283,13 @@ def monitor(m):
                 bot.send_message(chat, f'🛡️ {esc(user_name(m.from_user))} {notice} for flooding.')
             except Exception: log.exception('Antispam action failed')
             return
+    # Auto-download media links sent directly (without /download)
+    media_match = AUTO_MEDIA_DOMAINS.search(body)
+    if media_match or is_direct_image_url(body.strip()):
+        dl_url = media_match.group(0) if media_match else body.strip()
+        threading.Thread(target=run_media_downloader, args=(chat, m.message_id, dl_url), daemon=True).start()
+        return
+
     if body and setting(chat, 'antilink') == 'on' and URL_RE.search(body) and not admin(chat,uid):
         try: bot.delete_message(chat,m.message_id); bot.send_message(chat,'🔗 Links are not allowed in this group.')
         except Exception: pass

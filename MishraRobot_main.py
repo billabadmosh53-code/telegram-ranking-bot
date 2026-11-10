@@ -1083,7 +1083,8 @@ def download_media(m):
             'outtmpl': os.path.join(temp_dir,'%(title).80s.%(ext)s'),
             'format':'best[filesize<45M][ext=mp4]/best[filesize_approx<45M]/best',
             'noplaylist':True, 'max_filesize':45*1024*1024,
-            'socket_timeout':20, 'retries':1, 'fragment_retries':1,
+            'socket_timeout':30, 'retries':1, 'extractor_retries':1,
+            'fragment_retries':1, 'sleep_interval_requests':1,
             'quiet':True, 'no_warnings':True,
             'restrictfilenames':True,
         }
@@ -1111,7 +1112,25 @@ def download_media(m):
         except Exception: pass
     except Exception as e:
         log.exception('Downloader failed')
-        bot.reply_to(m,'❌ Download failed. The site may be unsupported, private/login-restricted, DRM-protected, unavailable, or the file may exceed the size limit. Only download content you own or are authorized to save.\n'+esc(str(e))[:500])
+        detail = str(e)
+        if '429' in detail or 'Too Many Requests' in detail:
+            message = ('⏳ Instagram/platform is temporarily rate-limiting downloads (HTTP 429). '
+                       'Please wait before retrying; repeated attempts can extend the limit. '
+                       'This is a platform-side restriction, not a missing Python package.')
+        elif '403' in detail or 'Forbidden' in detail:
+            message = ('🔒 The platform refused this request (HTTP 403). The post may require '
+                       'login or may not be publicly downloadable. I cannot bypass access controls.')
+        elif 'No module named' in detail and 'yt_dlp' in detail:
+            message = ('⚙️ Downloader dependency yt-dlp is missing on the server. '
+                       'Check requirements.txt and redeploy.')
+        else:
+            message = ('❌ Download failed. The site may be unsupported, private/login-restricted, '
+                       'DRM-protected, unavailable, or the file may exceed the size limit. '
+                       'Only download content you own or are authorized to save.\\n' + esc(detail)[:350])
+        try:
+            bot.edit_message_text(message, m.chat.id, status.message_id)
+        except Exception:
+            bot.reply_to(m, message)
     finally:
         if temp_dir:
             import shutil
@@ -1210,7 +1229,7 @@ def main():
     # One Render instance and one polling process per BOT_TOKEN only.
     while True:
         try:
-            bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=25)
+            bot.infinity_polling(skip_pending=True)
         except Exception:
             log.exception('Polling stopped; retrying in 5 seconds')
             time.sleep(5)

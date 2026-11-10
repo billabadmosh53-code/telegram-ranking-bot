@@ -1,5 +1,4 @@
-pyTelegramBotAPI
-Pillow
-yt-dlp
-openai
-
+pyTelegramBotAPI>=4.26,<5
+Pillow>=10.0,<13
+yt-dlp>=2025.1.15
+openai>=1.0,<3

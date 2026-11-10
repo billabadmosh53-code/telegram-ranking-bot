@@ -2,7 +2,7 @@
 Required env: BOT_TOKEN. Optional: PORT, DATABASE_PATH, GROQ_API_KEY, GROQ_MODEL.
 Run exactly one polling instance per token. Render: one Web Service instance.
 """
-import os, io, re, time, json, random, sqlite3, threading, logging, tempfile
+import os, io, re, time, json, random, sqlite3, threading, logging, tempfile, socket, ipaddress
 from datetime import date
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +26,7 @@ DB_LOCK = threading.RLock()
 FLOOD = defaultdict(deque)
 AFK_NOTICE = {}  # (chat_id, afk_user_id, viewer_id) -> last notification time
 URL_RE = re.compile(r'(https?://|www\.|t\.me/|telegram\.me/)', re.I)
+PRIVATE_HOSTS = re.compile(r'^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0|\[::1\])', re.I)
 MAX_PURGE = 5000
 
 # ---------------- DATABASE ----------------
@@ -624,17 +625,28 @@ def remove_filter(m):
 
 # ---------------- COMPLETE LOCK / UNLOCK ----------------
 PERMISSION_FIELDS = ('can_send_messages','can_send_audios','can_send_documents','can_send_photos','can_send_videos','can_send_video_notes','can_send_voice_notes','can_send_polls','can_send_other_messages','can_add_web_page_previews','can_invite_users','can_pin_messages','can_change_info','can_manage_topics')
+
 def permissions_dict(perms):
     return {k: getattr(perms, k, None) for k in PERMISSION_FIELDS if getattr(perms, k, None) is not None}
+
+def get_base_permissions(chat):
+    raw = setting(chat, 'base_permissions', '')
+    if raw:
+        try: return json.loads(raw)
+        except Exception: pass
+    current = permissions_dict(bot.get_chat(chat).permissions)
+    if current:
+        set_setting(chat, 'base_permissions', json.dumps(current))
+        return current
+    return {k: True for k in PERMISSION_FIELDS}
 
 def apply_lock(m, cmd, mode):
     chat = m.chat.id
     current = bot.get_chat(chat).permissions
-    if cmd == 'lock' and mode == 'all' and not setting(chat, 'saved_permissions', ''):
-        set_setting(chat, 'saved_permissions', json.dumps(permissions_dict(current)))
-    base = permissions_dict(current)
-    if not base:
-        base = {k: True for k in PERMISSION_FIELDS}
+    # Store base permissions before making locks so unlocks respect original configuration
+    if not setting(chat, 'base_permissions', ''):
+        set_setting(chat, 'base_permissions', json.dumps(permissions_dict(current)))
+    base = permissions_dict(current) or {k: True for k in PERMISSION_FIELDS}
     if mode == 'all':
         for k in PERMISSION_FIELDS:
             if k in base: base[k] = False
@@ -657,32 +669,28 @@ def apply_lock(m, cmd, mode):
 
 def apply_unlock(m, mode):
     chat = m.chat.id
+    baseline = get_base_permissions(chat)
     if mode == 'all':
-        raw = setting(chat, 'saved_permissions', '')
-        if raw:
-            try: base = json.loads(raw)
-            except Exception: base = {}
-        else: base = {}
-        if not base: base = {k: True for k in PERMISSION_FIELDS}
-        # Restore a complete, permissive send state if the previous lock came from older code.
-        for k in ('can_send_messages','can_send_audios','can_send_documents','can_send_photos','can_send_videos','can_send_video_notes','can_send_voice_notes','can_send_polls','can_send_other_messages','can_add_web_page_previews'):
-            base.setdefault(k, True)
-        bot.set_chat_permissions(chat, types.ChatPermissions(**base))
-        with DB_LOCK, connect() as c:
-            c.execute('DELETE FROM settings WHERE chat_id=? AND key=?', (chat, 'saved_permissions'))
+        bot.set_chat_permissions(chat, types.ChatPermissions(**baseline))
         return
-    current = permissions_dict(bot.get_chat(chat).permissions)
-    if not current: current = {k: True for k in PERMISSION_FIELDS}
+    current = permissions_dict(bot.get_chat(chat).permissions) or dict(baseline)
+    # Restore only if allowed in the chat's original baseline permissions
+    def restore(k):
+        if baseline.get(k, True):
+            current[k] = True
     if mode == 'media':
-        for k in ('can_send_photos','can_send_videos','can_send_documents','can_send_audios','can_send_voice_notes','can_send_video_notes','can_send_other_messages'): current[k] = True
-    elif mode in ('sticker','gif'): current['can_send_other_messages'] = True; current['can_send_videos'] = True if mode == 'gif' else current.get('can_send_videos', True)
-    elif mode == 'photo': current['can_send_photos'] = True
-    elif mode == 'video': current['can_send_videos'] = True
-    elif mode == 'document': current['can_send_documents'] = True
-    elif mode == 'audio': current['can_send_audios'] = True
-    elif mode == 'voice': current['can_send_voice_notes'] = True
-    elif mode == 'poll': current['can_send_polls'] = True
-    elif mode == 'webpreview': current['can_add_web_page_previews'] = True
+        for k in ('can_send_photos','can_send_videos','can_send_documents','can_send_audios','can_send_voice_notes','can_send_video_notes','can_send_other_messages'):
+            restore(k)
+    elif mode in ('sticker','gif'):
+        restore('can_send_other_messages')
+        if mode == 'gif': restore('can_send_videos')
+    elif mode == 'photo': restore('can_send_photos')
+    elif mode == 'video': restore('can_send_videos')
+    elif mode == 'document': restore('can_send_documents')
+    elif mode == 'audio': restore('can_send_audios')
+    elif mode == 'voice': restore('can_send_voice_notes')
+    elif mode == 'poll': restore('can_send_polls')
+    elif mode == 'webpreview': restore('can_add_web_page_previews')
     else: raise ValueError('Unknown unlock type')
     bot.set_chat_permissions(chat, types.ChatPermissions(**current))
 
@@ -699,7 +707,7 @@ def lock_approval(m):
         with DB_LOCK, connect() as c:
             rows=c.execute('SELECT user_id FROM lock_approved WHERE chat_id=? ORDER BY created_at', (m.chat.id,)).fetchall()
         if not rows: return bot.reply_to(m,'No approved members yet.')
-        return bot.reply_to(m,'✅ Approved members:\n'+'\n'.join(f'<a href="tg://user?id={r["user_id"]}">{r["user_id"]}</a>' for r in rows))
+        return bot.reply_to(m,'✅ Approved members:\n'+ '\n'.join(f'<a href="tg://user?id={r["user_id"]}"><code>{r["user_id"]}</code></a>' for r in rows))
     if not target: return bot.reply_to(m, f'Reply to a user with /{cmd}.')
     if cmd == 'approve':
         with DB_LOCK, connect() as c:
@@ -766,7 +774,6 @@ def purge(m):
                 result = batch_delete(m.chat.id, batch)
                 count += sum(bool(x) for x in result) if isinstance(result, (list, tuple)) else len(batch)
             except Exception:
-                # Fall back per message for this batch if the installed library/API wrapper rejects bulk deletion.
                 for mid in batch:
                     try:
                         bot.delete_message(m.chat.id, mid); count += 1
@@ -851,7 +858,6 @@ def promote_callback(call):
                 can_pin_messages=True, can_manage_topics=True, can_post_stories=True,
                 can_edit_stories=True, can_delete_stories=True)
         elif level == 'limited':
-            # Telegram requires can_manage_chat for an administrator; all other rights are disabled.
             rights = dict(can_manage_chat=True, can_post_messages=False, can_edit_messages=False,
                 can_delete_messages=False, can_manage_video_chats=False, can_restrict_members=False,
                 can_promote_members=False, can_change_info=False, can_invite_users=False,
@@ -910,7 +916,6 @@ def mmf(m):
         if top_text: draw_caption(d, top_text, w, 10, font)
         if bottom:
             n = len(wrapped(d,bottom,font,w-24)); y = max(8,h-n*(d.textbbox((0,0),'Ag',font=font)[3]+8)-16); draw_caption(d,bottom,w,y,font)
-        # Telegram static sticker: WebP, max side 512 px.
         img.thumbnail((512, 512), getattr(Image, 'Resampling', Image).LANCZOS)
         out = io.BytesIO(); out.name = 'mishra_meme.webp'
         quality = 90
@@ -932,7 +937,6 @@ def kang(m):
         if r.sticker.is_animated: out.name = r.sticker.file_unique_id+'.tgs'; bot.send_document(m.chat.id,out,caption='Animated sticker file')
         elif r.sticker.is_video: out.name = r.sticker.file_unique_id+'.webm'; bot.send_document(m.chat.id,out,caption='Video sticker file')
         else:
-            # Static sticker is converted to PNG so it is delivered as a photo.
             sticker_img = Image.open(io.BytesIO(raw)).convert('RGBA')
             photo = io.BytesIO(); photo.name = 'kanged.png'
             sticker_img.save(photo, 'PNG'); photo.seek(0)
@@ -957,7 +961,12 @@ def tag_all(m):
     with DB_LOCK, connect() as c:
         users = c.execute('SELECT user_id,name FROM stats WHERE chat_id=? ORDER BY count DESC LIMIT 300', (m.chat.id,)).fetchall()
     if not users: return bot.reply_to(m, 'No tracked members yet. Members must send messages first.')
-    mentions = [f'<a href="tg://user?id={u["user_id"]}">{esc(u["name"])}</a>' for u in users if u['user_id'] != bot.get_me().id]
+    mentions = []
+    for u in users:
+        if u['user_id'] != bot.get_me().id:
+            u_id = u['user_id']
+            u_name = esc(u['name'])
+            mentions.append(f'<a href="tg://user?id={u_id}">{u_name}</a>')
     reason = m.text.strip()[4:].strip()
     for i in range(0, len(mentions), 30):
         header = '📢 <b>Attention everyone!</b>\n' if i == 0 else ''
@@ -1066,49 +1075,112 @@ def daily_reward(m):
     bot.reply_to(m,f'🎁 Daily reward: <b>+{reward} coins</b>! Use /coins to check your balance.')
 
 # ---------------- PUBLIC MEDIA DOWNLOADER ----------------
+def is_direct_image_url(url):
+    clean = url.split('?')[0].lower()
+    return any(clean.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))
+
 @bot.message_handler(commands=['download','dl'])
 def download_media(m):
-    parts=(m.text or '').split(maxsplit=1)
-    if len(parts)<2:
-        return bot.reply_to(m,'Usage: /download https://public-content-url')
-    url=parts[1].strip()
-    if not re.match(r'^https?://',url,re.I):
-        return bot.reply_to(m,'Please send a valid http/https URL.')
-    status=bot.reply_to(m,'⬇️ Checking public media link…')
-    temp_dir=None
+    parts = (m.text or '').split(maxsplit=1)
+    if len(parts) < 2:
+        return bot.reply_to(m, 'Usage: /download https://public-content-url')
+    url = parts[1].strip()
+    safe, err_msg = is_safe_download_url(url)
+    if not safe:
+        return bot.reply_to(m, f'⛔ {esc(err_msg)}')
+    status = bot.reply_to(m, '⬇️ Checking public media link…')
+    temp_dir = None
     try:
+        temp_dir = tempfile.mkdtemp(prefix='mishra_dl_')
+
+        # 1. Direct Image URL handler (fast and reliable)
+        if is_direct_image_url(url):
+            import urllib.request
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                data = resp.read(20 * 1024 * 1024)
+            img_io = io.BytesIO(data)
+            img_io.name = 'downloaded_photo.jpg'
+            bot.send_photo(m.chat.id, img_io, caption='📥 Downloaded Photo', reply_to_message_id=m.message_id)
+            try: bot.delete_message(m.chat.id, status.message_id)
+            except Exception: pass
+            return
+
+        # 2. General / Social Media extractor using yt-dlp
         import yt_dlp
-        temp_dir=tempfile.mkdtemp(prefix='mishra_dl_')
-        opts={
-            'outtmpl': os.path.join(temp_dir,'%(title).80s.%(ext)s'),
-            'format':'best[filesize<45M][ext=mp4]/best[filesize_approx<45M]/best',
-            'noplaylist':True, 'max_filesize':45*1024*1024,
-            'socket_timeout':30, 'retries':1, 'extractor_retries':1,
-            'fragment_retries':1, 'sleep_interval_requests':1,
-            'quiet':True, 'no_warnings':True,
-            'restrictfilenames':True,
+        opts = {
+            'outtmpl': os.path.join(temp_dir, '%(title).80s.%(ext)s'),
+            'format': 'best[filesize<45M][ext=mp4]/best[filesize_approx<45M]/best',
+            'noplaylist': True,
+            'max_filesize': 45 * 1024 * 1024,
+            'socket_timeout': 30,
+            'retries': 2,
+            'quiet': True,
+            'no_warnings': True,
+            'restrictfilenames': True,
         }
+        
+        info = None
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info=ydl.extract_info(url,download=True)
-            path=ydl.prepare_filename(info)
-        if not os.path.isfile(path):
-            candidates=[os.path.join(temp_dir,x) for x in os.listdir(temp_dir)]
-            candidates=[x for x in candidates if os.path.isfile(x)]
-            if not candidates: raise RuntimeError('No downloadable media was returned.')
-            path=max(candidates,key=os.path.getsize)
-        size=os.path.getsize(path)
-        if size>49*1024*1024:
+            try:
+                info = ydl.extract_info(url, download=True)
+            except Exception as dl_err:
+                # If video extraction fails, retry with thumbnail/image extraction (e.g. for image posts)
+                opts_img = dict(opts)
+                opts_img['writethumbnail'] = True
+                opts_img['skip_download'] = False
+                opts_img.pop('format', None)
+                with yt_dlp.YoutubeDL(opts_img) as ydl_retry:
+                    info = ydl_retry.extract_info(url, download=True)
+
+        candidates = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir)]
+        candidates = [x for x in candidates if os.path.isfile(x)]
+        
+        if not candidates:
+            # Check if info contains direct image or thumbnail URL
+            thumb_url = None
+            if isinstance(info, dict):
+                thumb_url = info.get('url') if str(info.get('url', '')).startswith('http') else info.get('thumbnail')
+            if thumb_url and isinstance(thumb_url, str) and thumb_url.startswith('http'):
+                import urllib.request
+                req = urllib.request.Request(thumb_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    data = resp.read(20 * 1024 * 1024)
+                img_io = io.BytesIO(data)
+                img_io.name = 'photo.jpg'
+                caption = '📥 ' + esc(info.get('title') or 'Downloaded photo')[:900]
+                bot.send_photo(m.chat.id, img_io, caption=caption, reply_to_message_id=m.message_id)
+                try: bot.delete_message(m.chat.id, status.message_id)
+                except Exception: pass
+                return
+            raise RuntimeError('No downloadable media was returned.')
+
+        # Sort so video/audio is prioritized over small thumbnails if both exist
+        def media_sort_key(file_path):
+            e = os.path.splitext(file_path)[1].lower()
+            if e in ('.mp4', '.m4v', '.mov', '.webm'): return (3, os.path.getsize(file_path))
+            if e in ('.jpg', '.jpeg', '.png', '.webp'): return (2, os.path.getsize(file_path))
+            if e in ('.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'): return (1, os.path.getsize(file_path))
+            return (0, os.path.getsize(file_path))
+
+        path = max(candidates, key=media_sort_key)
+        size = os.path.getsize(path)
+        if size > 49 * 1024 * 1024:
             raise RuntimeError('File is larger than the safe Telegram upload limit (49 MB).')
-        caption='📥 '+esc(info.get('title') or 'Downloaded media')[:900]
-        ext=os.path.splitext(path)[1].lower()
-        with open(path,'rb') as media:
-            if ext in ('.mp4','.m4v','.mov','.webm'):
-                bot.send_video(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
-            elif ext in ('.mp3','.m4a','.aac','.ogg','.opus','.wav'):
-                bot.send_audio(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
+
+        caption = '📥 ' + esc((info.get('title') if isinstance(info, dict) else None) or 'Downloaded media')[:900]
+        ext = os.path.splitext(path)[1].lower()
+        with open(path, 'rb') as media:
+            if ext in ('.mp4', '.m4v', '.mov', '.webm'):
+                bot.send_video(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+            elif ext in ('.jpg', '.jpeg', '.png', '.webp'):
+                bot.send_photo(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+            elif ext in ('.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'):
+                bot.send_audio(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
             else:
-                bot.send_document(m.chat.id,media,caption=caption,reply_to_message_id=m.message_id,timeout=120)
-        try: bot.delete_message(m.chat.id,status.message_id)
+                bot.send_document(m.chat.id, media, caption=caption, reply_to_message_id=m.message_id, timeout=120)
+
+        try: bot.delete_message(m.chat.id, status.message_id)
         except Exception: pass
     except Exception as e:
         log.exception('Downloader failed')
@@ -1126,7 +1198,7 @@ def download_media(m):
         else:
             message = ('❌ Download failed. The site may be unsupported, private/login-restricted, '
                        'DRM-protected, unavailable, or the file may exceed the size limit. '
-                       'Only download content you own or are authorized to save.\\n' + esc(detail)[:350])
+                       'Only download content you own or are authorized to save.\n' + esc(detail)[:350])
         try:
             bot.edit_message_text(message, m.chat.id, status.message_id)
         except Exception:
@@ -1134,7 +1206,7 @@ def download_media(m):
     finally:
         if temp_dir:
             import shutil
-            shutil.rmtree(temp_dir,ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
@@ -1150,7 +1222,6 @@ def monitor(m):
         if len(q) >= threshold:
             try: bot.delete_message(chat, m.message_id)
             except Exception: pass
-            # Clear the window so one flood burst causes one moderation action.
             q.clear()
             action = setting(chat, 'antispam_action', 'mute')
             try:
@@ -1184,6 +1255,11 @@ def monitor(m):
                     else: bot.reply_to(m, row['response'])
                 except Exception: log.exception('Filter reply failed')
                 break
+
+    # Avoid clearing AFK status immediately if this message was the /afk command itself
+    if body.startswith('/afk'):
+        return
+
     # Remove AFK when the member speaks again.
     with DB_LOCK, connect() as c:
         away = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (uid,)).fetchone()
@@ -1203,13 +1279,13 @@ def monitor(m):
         elif ent.type == 'mention':
             username = body[ent.offset:ent.offset+ent.length].lstrip('@').lower()
             with DB_LOCK, connect() as c:
-                r = c.execute('SELECT user_id,name,username FROM global_users WHERE lower(username)=?', (username)).fetchone()
+                r = c.execute('SELECT user_id,name,username FROM global_users WHERE lower(replace(username, "@", ""))=? LIMIT 1', (username,)).fetchone()
             if r:
                 class CachedUser: pass
                 u = CachedUser(); u.id=r['user_id']; u.first_name=r['name']; u.username=r['username']; targets[u.id]=u
     for target_id_value, target in targets.items():
         with DB_LOCK, connect() as c:
-            af = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (target_id_value)).fetchone()
+            af = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (target_id_value,)).fetchone()
         if not af: continue
         key = (chat,target_id_value,uid); now = time.time()
         if now - AFK_NOTICE.get(key, 0) < 60: continue
@@ -1226,7 +1302,6 @@ def main():
     init_db()
     threading.Thread(target=health_server, daemon=True, name='health-server').start()
     log.info('Mishra Guard Robot V4 started; health server on port %s', PORT)
-    # One Render instance and one polling process per BOT_TOKEN only.
     while True:
         try:
             bot.infinity_polling(skip_pending=True)

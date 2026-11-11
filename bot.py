@@ -1148,6 +1148,7 @@ def get_instagram_video_stream(url):
     if not m: return None
     shortcode = m.group(1)
 
+    # Method 1: Authenticated API with cookies if available
     cookie_str = make_cookie_header(COOKIES_DATA)
     if cookie_str:
         try:
@@ -1155,7 +1156,7 @@ def get_instagram_video_stream(url):
                 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
                 'Cookie': cookie_str, 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json'
             })
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=8) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
                 items = data.get('items', [])
                 if items and items[0].get('video_versions'):
@@ -1163,15 +1164,61 @@ def get_instagram_video_stream(url):
                 media = data.get('graphql', {}).get('shortcode_media', {})
                 if media and media.get('is_video') and media.get('video_url'):
                     return media['video_url']
-        except Exception: pass
+        except Exception:
+            pass
 
-    try:
-        req = urllib.request.Request(f'https://www.ddinstagram.com/reel/{shortcode}/', headers={'User-Agent': 'facebookexternalhit/1.1'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            html = resp.read().decode('utf-8', errors='ignore')
-            v_match = re.search(r'<meta\s+property="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I)
-            if v_match: return v_match.group(1).replace('&amp;', '&')
-    except Exception: pass
+    # Method 2: DDInstagram / Instagramez / Fixupx Mirrors (Bypasses Render 429 IP Block)
+    mirrors = [
+        f'https://www.ddinstagram.com/reel/{shortcode}/',
+        f'https://www.instagramez.com/reel/{shortcode}/',
+        f'https://www.ddinstagram.com/p/{shortcode}/',
+        f'https://www.instagramez.com/p/{shortcode}/',
+        f'https://ddinstagram.com/videos/{shortcode}/1'
+    ]
+    headers_bot = {
+        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+    for m_url in mirrors:
+        try:
+            req = urllib.request.Request(m_url, headers=headers_bot)
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                # If direct mp4 stream returned (e.g. videos/shortcode/1)
+                ct = resp.headers.get('Content-Type', '').lower()
+                if 'video' in ct or 'mp4' in ct or resp.geturl().endswith('.mp4'):
+                    return resp.geturl()
+                html = resp.read().decode('utf-8', errors='ignore')
+                v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
+                          re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I) or \
+                          re.search(r'src="(https?://[^"]+\.mp4[^"]*)"', html, re.I)
+                if v_match:
+                    v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
+                    if v_url.startswith('http'):
+                        return v_url
+        except Exception:
+            continue
+
+    # Method 3: Cobalt Fast Direct Fallback
+    cobalt_hosts = [
+        'https://co.wuk.sh/api/json',
+        'https://cobalt-api.kwiatekm.tokyo/api/json',
+        'https://cobalt.xy24.eu/api/json'
+    ]
+    for c_url in cobalt_hosts:
+        try:
+            payload = json.dumps({'url': url, 'videoQuality': '720'}).encode('utf-8')
+            req = urllib.request.Request(c_url, data=payload, headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'MishraRobot/4.0'
+            })
+            with urllib.request.urlopen(req, timeout=6) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if res_data.get('status') in ('tunnel', 'redirect', 'stream') and res_data.get('url'):
+                    return res_data['url']
+        except Exception:
+            continue
+
     return None
 
 def send_download_button(chat_id, message_id, url, platform):

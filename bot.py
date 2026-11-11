@@ -2,7 +2,7 @@
 Required env: BOT_TOKEN. Optional: PORT, DATABASE_PATH, GROQ_API_KEY, GROQ_MODEL.
 Run exactly one polling instance per token. Render: one Web Service instance.
 """
-import os, io, re, time, json, random, sqlite3, threading, logging, tempfile, socket, ipaddress
+import os, io, re, time, json, random, sqlite3, threading, logging, tempfile, socket, ipaddress, uuid
 from datetime import date
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1096,43 +1096,26 @@ def daily_reward(m):
         c.execute('UPDATE wallet SET coins=coins+?,last_daily=? WHERE user_id=?',(reward,today,m.from_user.id))
     bot.reply_to(m,f'🎁 Daily reward: <b>+{reward} coins</b>! Use /coins to check your balance.')
 
-# ---------------- PUBLIC MEDIA DOWNLOADER ----------------
-# ---------------- PUBLIC MEDIA DOWNLOADER ----------------
-# ---------------- PUBLIC MEDIA DOWNLOADER ----------------
-def is_safe_download_url(url):
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme.lower() not in ('http', 'https'):
-            return False, 'Only HTTP/HTTPS URLs are allowed.'
-        hostname = (parsed.hostname or '').strip().lower()
-        if not hostname:
-            return False, 'Invalid URL host.'
-        if PRIVATE_HOSTS.match(hostname):
-            return False, 'Private and internal network URLs are blocked for security.'
-        try:
-            ip_str = socket.gethostbyname(hostname)
-            ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                return False, 'Private and internal network URLs are blocked for security.'
-        except (socket.gaierror, socket.herror, OSError):
-            pass
-        return True, ''
-    except Exception:
-        return False, 'Malformed URL provided.'
+# ---------------- INSTAGRAM & PINTEREST VIDEO DOWNLOADER (WITH BUTTON) ----------------
+PENDING_DL = {}
+PENDING_LOCK = threading.Lock()
 
-def is_direct_image_url(url):
-    clean = url.split('?')[0].lower()
-    return any(clean.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))
+def store_dl_url(url, platform):
+    with PENDING_LOCK:
+        token = uuid.uuid4().hex[:8]
+        now = time.time()
+        for k in list(PENDING_DL.keys()):
+            if now - PENDING_DL[k].get('ts', 0) > 3600:
+                PENDING_DL.pop(k, None)
+        PENDING_DL[token] = {'url': url, 'platform': platform, 'ts': now}
+        return token
 
-MEDIA_URL_REGEX = re.compile(
-    r'(https?://[^\s]+)',
-    re.I
-)
+def get_dl_url(token):
+    with PENDING_LOCK:
+        return PENDING_DL.get(token)
 
-AUTO_MEDIA_DOMAINS = re.compile(
-    r'https?://(?:www\.|vt\.|vm\.|m\.)?(?:instagram\.com/(?:reel|p|tv|share)/|youtu\.be/|youtube\.com/(?:watch|shorts|live)|tiktok\.com/|x\.com/\w+/status/|twitter\.com/\w+/status/|pinterest\.com/pin/|pin\.it/|facebook\.com/(?:reel/|watch|share)|fb\.watch/|reddit\.com/r/)[^\s]+',
-    re.I
-)
+INSTA_VIDEO_RE = re.compile(r'https?://(?:www\.)?instagram\.com/(?:reel|tv|p)/[A-Za-z0-9_-]+', re.I)
+PINTEREST_VIDEO_RE = re.compile(r'https?://(?:www\.|[a-z]{2}\.)?(?:pinterest\.com/pin/|pin\.it/)[A-Za-z0-9_/-]+', re.I)
 
 def make_cookie_header(cookie_text):
     if not cookie_text: return ''
@@ -1140,367 +1123,189 @@ def make_cookie_header(cookie_text):
     for line in cookie_text.splitlines():
         line = line.strip()
         if not line or line.startswith('#'): continue
-        parts = line.split('	')
+        parts = line.split('\t')
         if len(parts) >= 7: cookies.append(f"{parts[5]}={parts[6]}")
         elif '=' in line and len(parts) == 1: cookies.append(line)
     return "; ".join(cookies)
 
-def get_public_api_media(url):
-    import urllib.request, json
-    cobalt_endpoints = [
-        'https://co.wuk.sh/api/json',
-        'https://cobalt-api.kwiatekm.tokyo/api/json',
-        'https://api.cobalt.tools/api/json',
-        'https://cobalt.xy24.eu/api/json'
-    ]
-    for endpoint in cobalt_endpoints:
-        try:
-            req_data = json.dumps({'url': url, 'videoQuality': '720'}).encode('utf-8')
-            req = urllib.request.Request(endpoint, data=req_data, headers={
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'MishraRobot/4.0'
-            })
-            with urllib.request.urlopen(req, timeout=10) as response:
-                res_json = json.loads(response.read().decode('utf-8'))
-                if res_json.get('status') in ('tunnel', 'redirect', 'stream'):
-                    direct_url = res_json.get('url')
-                    if direct_url:
-                        return ('video', direct_url)
-                elif res_json.get('status') == 'picker':
-                    picker = res_json.get('picker', [])
-                    if picker and picker[0].get('url'):
-                        p_type = 'photo' if picker[0].get('type') == 'photo' else 'video'
-                        return (p_type, picker[0]['url'])
-        except Exception:
-            continue
-    return None
-
-def get_pinterest_media(url):
+def get_pinterest_video_stream(url):
     import urllib.request, re
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    }
     try:
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
         with urllib.request.urlopen(req, timeout=12) as resp:
             html = resp.read().decode('utf-8', errors='ignore')
-            # 1. Video check
             v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
                       re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I)
             if v_match:
-                return ('video', v_match.group(1).replace('&amp;', '&'))
-            # 2. og:image check (Keep valid CDN link, don't break with /originals/ which causes 403)
-            img_match = re.search(r'<meta\s+(?:property|name)="og:image(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
-                        re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:image(?::secure_url)?"', html, re.I)
-            if img_match:
-                img_url = img_match.group(1).replace('&amp;', '&')
-                return ('photo', img_url)
-            # 3. JSON check (__PWS_DATA__)
-            pws = re.search(r'"images"\s*:\s*\{"orig"\s*:\s*\{"url"\s*:\s*"([^"]+)"', html) or \
-                  re.search(r'"images"\s*:\s*\{"\d+x"\s*:\s*\{"url"\s*:\s*"([^"]+)"', html)
-            if pws:
-                return ('photo', pws.group(1).replace('\\u0026', '&').replace('&amp;', '&'))
+                return v_match.group(1).replace('&amp;', '&')
     except Exception as e:
-        log.warning("Pinterest fetch error: %s", e)
+        log.warning("Pinterest video direct fetch error: %s", e)
     return None
 
-def get_instagram_direct_media(url):
+def get_instagram_video_stream(url):
     import re, urllib.request, json
     m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
     if not m: return None
     shortcode = m.group(1)
 
-    # Method 1: Use Instagram Cookies if provided (Check both items and graphql)
     cookie_str = make_cookie_header(COOKIES_DATA)
     if cookie_str:
         try:
-            api_url = f'https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis'
-            req = urllib.request.Request(api_url, headers={
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                'Cookie': cookie_str,
-                'X-IG-App-ID': '936619743392459',
-                'Accept': 'application/json'
+            req = urllib.request.Request(f'https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis', headers={
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+                'Cookie': cookie_str, 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json'
             })
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-                # Structure A: items[0]
                 items = data.get('items', [])
-                if items:
-                    item = items[0]
-                    if item.get('video_versions'):
-                        return ('video', item['video_versions'][0]['url'])
-                    if item.get('image_versions2', {}).get('candidates'):
-                        return ('photo', item['image_versions2']['candidates'][0]['url'])
-                    if item.get('carousel_media'):
-                        c_item = item['carousel_media'][0]
-                        if c_item.get('video_versions'):
-                            return ('video', c_item['video_versions'][0]['url'])
-                        if c_item.get('image_versions2', {}).get('candidates'):
-                            return ('photo', c_item['image_versions2']['candidates'][0]['url'])
-                # Structure B: graphql.shortcode_media
+                if items and items[0].get('video_versions'):
+                    return items[0]['video_versions'][0]['url']
                 media = data.get('graphql', {}).get('shortcode_media', {})
-                if media:
-                    if media.get('is_video') and media.get('video_url'):
-                        return ('video', media['video_url'])
-                    if media.get('display_url'):
-                        return ('photo', media['display_url'])
-        except Exception as e:
-            log.warning("Instagram authenticated fetch error: %s", e)
+                if media and media.get('is_video') and media.get('video_url'):
+                    return media['video_url']
+        except Exception: pass
 
-    # Method 2: Instagram Embed page (Reliable for public photos without login)
     try:
-        embed_url = f'https://www.instagram.com/p/{shortcode}/embed/captioned/'
-        req = urllib.request.Request(embed_url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        })
+        req = urllib.request.Request(f'https://www.ddinstagram.com/reel/{shortcode}/', headers={'User-Agent': 'facebookexternalhit/1.1'})
         with urllib.request.urlopen(req, timeout=8) as resp:
             html = resp.read().decode('utf-8', errors='ignore')
-            v_match = re.search(r'class="EmbeddedVideo"[^>]*src="([^"]+)"', html) or re.search(r'"video_url"\s*:\s*"([^"]+)"', html)
-            if v_match:
-                return ('video', v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&'))
-            i_match = re.search(r'class="EmbeddedImage"[^>]*src="([^"]+)"', html) or re.search(r'"display_url"\s*:\s*"([^"]+)"', html)
-            if i_match:
-                return ('photo', i_match.group(1).replace('&amp;', '&').replace('\\u0026', '&'))
-    except Exception:
-        pass
+            v_match = re.search(r'<meta\s+property="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I)
+            if v_match: return v_match.group(1).replace('&amp;', '&')
+    except Exception: pass
+    return None
 
-    # Method 3: DDInstagram / Instagramez Proxy
-    mirrors = [
-        f'https://www.ddinstagram.com/reel/{shortcode}/',
-        f'https://www.instagramez.com/reel/{shortcode}/',
-        f'https://www.ddinstagram.com/p/{shortcode}/',
-        f'https://www.instagramez.com/p/{shortcode}/'
-    ]
-    headers_bot = {
-        'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    }
-    for mirror_url in mirrors:
-        try:
-            req = urllib.request.Request(mirror_url, headers=headers_bot)
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                html = resp.read().decode('utf-8', errors='ignore')
-                v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
-                          re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I)
-                if v_match:
-                    v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
-                    if v_url.startswith('http'):
-                        return ('video', v_url)
-                img_match = re.search(r'<meta\s+(?:property|name)="og:image(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
-                            re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:image(?::secure_url)?"', html, re.I)
-                if img_match:
-                    img_url = img_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
-                    if img_url.startswith('http'):
-                        return ('photo', img_url)
-        except Exception:
-            continue
+def send_download_button(chat_id, message_id, url, platform):
+    token = store_dl_url(url, platform)
+    plat_title = "Instagram Reel" if platform == "instagram" else "Pinterest Video"
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("📥 Download Video", callback_data=f"dlv:{token}"))
+    bot.send_message(
+        chat_id,
+        f"🎬 <b>{plat_title} Link Mila!</b>\nVideo download karne ke liye niche button dabayein:",
+        reply_to_message_id=message_id,
+        reply_markup=kb
+    )
 
-    return get_public_api_media(url)
-
-def run_media_downloader(chat_id, message_id, url):
-    safe, err_msg = is_safe_download_url(url)
-    if not safe:
-        return bot.send_message(chat_id, f'⛔ {esc(err_msg)}', reply_to_message_id=message_id)
-
-    status = bot.send_message(chat_id, '⬇️ Checking public media link…', reply_to_message_id=message_id)
+def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
     temp_dir = None
     try:
-        temp_dir = tempfile.mkdtemp(prefix='mishra_dl_')
+        temp_dir = tempfile.mkdtemp(prefix='mishra_v_')
 
-        # 1. Direct Image URL
-        if is_direct_image_url(url):
-            import urllib.request
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=25) as resp:
-                data = resp.read(20 * 1024 * 1024)
-            img_io = io.BytesIO(data)
-            img_io.name = 'downloaded_photo.jpg'
-            bot.send_photo(chat_id, img_io, caption='📥 Downloaded Photo', reply_to_message_id=message_id)
-            try: bot.delete_message(chat_id, status.message_id)
-            except Exception: pass
-            return
-
-        # 2. Instagram Dedicated Resolver (Reels & Photos)
-        if 'instagram.com' in url.lower():
-            ig_res = get_instagram_direct_media(url)
-            if ig_res:
-                m_type, m_url = ig_res
+        # 1. Instagram Direct Fast Stream
+        if platform == 'instagram':
+            v_url = get_instagram_video_stream(url)
+            if v_url:
                 import urllib.request
-                req = urllib.request.Request(m_url, headers={'User-Agent': 'Mozilla/5.0'})
+                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=30) as resp:
-                    m_data = resp.read(48 * 1024 * 1024)
-                buf = io.BytesIO(m_data)
-                if m_type == 'video':
-                    buf.name = 'instagram_video.mp4'
-                    bot.send_video(chat_id, buf, caption='📥 Downloaded from Instagram', reply_to_message_id=message_id, timeout=120)
-                else:
-                    buf.name = 'instagram_photo.jpg'
-                    try:
-                        bot.send_photo(chat_id, buf, caption='📥 Downloaded from Instagram', reply_to_message_id=message_id, timeout=120)
-                    except Exception:
-                        buf.seek(0)
-                        bot.send_document(chat_id, buf, caption='📥 Downloaded from Instagram', reply_to_message_id=message_id, timeout=120)
-                try: bot.delete_message(chat_id, status.message_id)
+                    buf = io.BytesIO(resp.read(48 * 1024 * 1024))
+                buf.name = 'instagram_video.mp4'
+                bot.send_video(chat_id, buf, caption='📥 Downloaded from Instagram', reply_to_message_id=reply_to_mid, timeout=120)
+                try: bot.delete_message(chat_id, status_mid)
                 except Exception: pass
                 return
 
-        # 3. Pinterest Dedicated Resolver (Pins & Photos)
-        if 'pin.it' in url.lower() or 'pinterest.com' in url.lower():
-            pin_res = get_pinterest_media(url)
-            if pin_res:
-                m_type, m_url = pin_res
+        # 2. Pinterest Direct Fast Stream
+        if platform == 'pinterest':
+            v_url = get_pinterest_video_stream(url)
+            if v_url:
                 import urllib.request
-                req = urllib.request.Request(m_url, headers={'User-Agent': 'Mozilla/5.0'})
+                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=30) as resp:
-                    m_data = resp.read(48 * 1024 * 1024)
-                buf = io.BytesIO(m_data)
-                if m_type == 'video':
-                    buf.name = 'pinterest_video.mp4'
-                    bot.send_video(chat_id, buf, caption='📥 Downloaded from Pinterest', reply_to_message_id=message_id, timeout=120)
-                else:
-                    buf.name = 'pinterest_photo.jpg'
-                    try:
-                        bot.send_photo(chat_id, buf, caption='📥 Downloaded from Pinterest', reply_to_message_id=message_id, timeout=120)
-                    except Exception:
-                        buf.seek(0)
-                        bot.send_document(chat_id, buf, caption='📥 Downloaded from Pinterest', reply_to_message_id=message_id, timeout=120)
-                try: bot.delete_message(chat_id, status.message_id)
+                    buf = io.BytesIO(resp.read(48 * 1024 * 1024))
+                buf.name = 'pinterest_video.mp4'
+                bot.send_video(chat_id, buf, caption='📥 Downloaded from Pinterest', reply_to_message_id=reply_to_mid, timeout=120)
+                try: bot.delete_message(chat_id, status_mid)
                 except Exception: pass
                 return
 
-        # 4. yt-dlp Extractor for YouTube, Facebook, Twitter, TikTok, etc.
+        # 3. Universal yt-dlp Video Extractor (Pinterest & Instagram videos)
         import yt_dlp
         opts = {
             'outtmpl': os.path.join(temp_dir, '%(title).80s.%(ext)s'),
-            'format': 'best/bestvideo+bestaudio/best',
+            'format': 'bestvideo+bestaudio/best[filesize<48M]/best',
             'noplaylist': True,
-            'max_filesize': 45 * 1024 * 1024,
+            'max_filesize': 48 * 1024 * 1024,
             'socket_timeout': 30,
             'retries': 2,
             'quiet': True,
             'no_warnings': True,
             'restrictfilenames': True,
         }
-        if 'instagram.com' in url.lower() and COOKIE_FILE_PATH and os.path.exists(COOKIE_FILE_PATH):
+        if platform == 'instagram' and COOKIE_FILE_PATH and os.path.exists(COOKIE_FILE_PATH):
             opts['cookiefile'] = COOKIE_FILE_PATH
-        
+
         info = None
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-        except Exception as yt_err:
-            err_str = str(yt_err).lower()
-            # If YouTube blocks or format is unavailable, fetch VIDEO via Cobalt API (NOT THUMBNAIL PHOTO)
-            fallback_res = get_public_api_media(url)
-            if fallback_res:
-                m_type, m_url = fallback_res
-                import urllib.request
-                req = urllib.request.Request(m_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    m_data = resp.read(48 * 1024 * 1024)
-                buf = io.BytesIO(m_data)
-                buf.name = 'media.mp4' if m_type == 'video' else 'media.jpg'
-                if m_type == 'video':
-                    bot.send_video(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
-                else:
-                    bot.send_photo(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
-                try: bot.delete_message(chat_id, status.message_id)
-                except Exception: pass
-                return
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
-        candidates = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir)]
-        candidates = [x for x in candidates if os.path.isfile(x)]
-        
-        if not candidates:
-            # Fallback to public media API before throwing error
-            api_res = get_public_api_media(url)
-            if api_res:
-                m_type, m_url = api_res
-                import urllib.request
-                req = urllib.request.Request(m_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    m_data = resp.read(48 * 1024 * 1024)
-                buf = io.BytesIO(m_data)
-                buf.name = 'media.mp4' if m_type == 'video' else 'media.jpg'
-                if m_type == 'video':
-                    bot.send_video(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
-                else:
-                    bot.send_photo(chat_id, buf, caption='📥 Downloaded Media', reply_to_message_id=message_id, timeout=120)
-                try: bot.delete_message(chat_id, status.message_id)
-                except Exception: pass
-                return
+        candidates = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, x))]
+        video_files = [x for x in candidates if os.path.splitext(x)[1].lower() in ('.mp4', '.m4v', '.mov', '.webm', '.mkv')]
 
-            raise RuntimeError('No downloadable media was returned.')
+        if not video_files:
+            raise RuntimeError('Is link par koi downloadable video nahi mila (sirf photo ya unsupported post hai).')
 
-        def media_sort_key(file_path):
-            e = os.path.splitext(file_path)[1].lower()
-            if e in ('.mp4', '.m4v', '.mov', '.webm'): return (3, os.path.getsize(file_path))
-            if e in ('.jpg', '.jpeg', '.png', '.webp'): return (2, os.path.getsize(file_path))
-            if e in ('.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'): return (1, os.path.getsize(file_path))
-            return (0, os.path.getsize(file_path))
+        path = max(video_files, key=os.path.getsize)
+        if os.path.getsize(path) > 49 * 1024 * 1024:
+            raise RuntimeError('Video size Telegram ke 49 MB upload limit se bada hai.')
 
-        path = max(candidates, key=media_sort_key)
-        size = os.path.getsize(path)
-        if size > 49 * 1024 * 1024:
-            raise RuntimeError('File is larger than the safe Telegram upload limit (49 MB).')
+        title = info.get('title') if isinstance(info, dict) else 'Video'
+        caption = f"📥 <b>{esc(title)[:800]}</b>"
+        with open(path, 'rb') as vf:
+            bot.send_video(chat_id, vf, caption=caption, reply_to_message_id=reply_to_mid, timeout=120)
 
-        caption = '📥 ' + esc((info.get('title') if isinstance(info, dict) else None) or 'Downloaded media')[:900]
-        ext = os.path.splitext(path)[1].lower()
-        with open(path, 'rb') as media:
-            if ext in ('.mp4', '.m4v', '.mov', '.webm'):
-                bot.send_video(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
-            elif ext in ('.jpg', '.jpeg', '.png', '.webp'):
-                bot.send_photo(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
-            elif ext in ('.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wav'):
-                bot.send_audio(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
-            else:
-                bot.send_document(chat_id, media, caption=caption, reply_to_message_id=message_id, timeout=120)
-
-        try: bot.delete_message(chat_id, status.message_id)
+        try: bot.delete_message(chat_id, status_mid)
         except Exception: pass
+
     except Exception as e:
-        log.exception('Downloader failed')
-        detail = str(e)
-        if '429' in detail or 'Too Many Requests' in detail:
-            message = ('⏳ Instagram/platform is temporarily rate-limiting downloads (HTTP 429). '
-                       'Please wait before retrying; repeated attempts can extend the limit.')
-        elif '403' in detail or 'Forbidden' in detail:
-            message = ('🔒 The platform refused this request (HTTP 403). The post may require '
-                       'login or may not be publicly downloadable.')
-        elif 'No module named' in detail and 'yt_dlp' in detail:
-            message = ('⚙️ Downloader dependency yt-dlp is missing on the server. '
-                       'Check requirements.txt and redeploy.')
-        else:
-            message = ('❌ Download failed. The site may be unsupported, private/login-restricted, '
-                       'DRM-protected, unavailable, or the file may exceed the size limit.\n' + esc(detail)[:350])
-        try:
-            bot.edit_message_text(message, chat_id, status.message_id)
-        except Exception:
-            bot.send_message(chat_id, message, reply_to_message_id=message_id)
+        log.exception("Download video error: %s", e)
+        err_text = f"❌ <b>Download Error:</b>\n{esc(str(e))[:250]}"
+        try: bot.edit_message_text(err_text, chat_id, status_mid)
+        except Exception: bot.send_message(chat_id, err_text, reply_to_message_id=reply_to_mid)
     finally:
         if temp_dir:
             import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('dlv:'))
+def download_button_callback(call):
+    token = call.data.split(':', 1)[1]
+    item = get_dl_url(token)
+    if not item:
+        return bot.answer_callback_query(call.id, '⚠️ Yeh button expire ho chuka hai. Link dobara bhejein.', show_alert=True)
+
+    bot.answer_callback_query(call.id, '⏳ Video download ho raha hai...')
+    try:
+        bot.edit_message_text('⬇️ Downloading video, kripya thoda intezar karein…', call.message.chat.id, call.message.message_id)
+    except Exception: pass
+
+    threading.Thread(
+        target=download_video_thread,
+        args=(call.message.chat.id, call.message.message_id, call.message.message_id, item['url'], item['platform']),
+        daemon=True
+    ).start()
+
 @bot.message_handler(commands=['download','dl'])
 def download_media(m):
     parts = (m.text or '').split(maxsplit=1)
-    if len(parts) < 2:
-        return bot.reply_to(m, 'Usage: /download https://public-content-url')
+    if len(parts) < 2: return
     url = parts[1].strip()
-    threading.Thread(target=run_media_downloader, args=(m.chat.id, m.message_id, url), daemon=True).start()
+    if INSTA_VIDEO_RE.search(url):
+        send_download_button(m.chat.id, m.message_id, url, 'instagram')
+    elif PINTEREST_VIDEO_RE.search(url):
+        send_download_button(m.chat.id, m.message_id, url, 'pinterest')
+    else:
+        bot.reply_to(m, 'ℹ️ Bot par sirf Instagram Reels aur Pinterest Videos ka download supported hai.')
 
 @bot.message_handler(func=lambda m: not group(m) and bool(m.text), content_types=['text'])
 def pm_auto_download(m):
     body = (m.text or '').strip()
-    media_match = AUTO_MEDIA_DOMAINS.search(body)
-    if media_match or is_direct_image_url(body):
-        dl_url = media_match.group(0) if media_match else body
-        threading.Thread(target=run_media_downloader, args=(m.chat.id, m.message_id, dl_url), daemon=True).start()
-
+    insta_m = INSTA_VIDEO_RE.search(body)
+    pin_m = PINTEREST_VIDEO_RE.search(body)
+    if insta_m:
+        send_download_button(m.chat.id, m.message_id, insta_m.group(0), 'instagram')
+    elif pin_m:
+        send_download_button(m.chat.id, m.message_id, pin_m.group(0), 'pinterest')
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
@@ -1509,6 +1314,7 @@ def monitor(m):
     chat, uid = m.chat.id, m.from_user.id
     record(m)
     body = (m.text or m.caption or '').strip()
+
     if setting(chat, 'antispam') == 'on' and not admin(chat, uid) and not is_antispam_approved(chat, uid):
         now = time.time(); q = FLOOD[(chat,uid)]; q.append(now)
         while q and now-q[0] > 6: q.popleft()
@@ -1535,17 +1341,24 @@ def monitor(m):
                 bot.send_message(chat, f'🛡️ {esc(user_name(m.from_user))} {notice} for flooding.')
             except Exception: log.exception('Antispam action failed')
             return
-    # Auto-download media links sent directly (without /download)
-    media_match = AUTO_MEDIA_DOMAINS.search(body)
-    if media_match or is_direct_image_url(body.strip()):
-        dl_url = media_match.group(0) if media_match else body.strip()
-        threading.Thread(target=run_media_downloader, args=(chat, m.message_id, dl_url), daemon=True).start()
+
+    # Check for Instagram Reel or Pinterest Video link in group
+    insta_m = INSTA_VIDEO_RE.search(body)
+    pin_m = PINTEREST_VIDEO_RE.search(body)
+    if insta_m:
+        send_download_button(chat, m.message_id, insta_m.group(0), 'instagram')
+        return
+    elif pin_m:
+        send_download_button(chat, m.message_id, pin_m.group(0), 'pinterest')
         return
 
+    # Anti-link restriction in group for other links
     if body and setting(chat, 'antilink') == 'on' and URL_RE.search(body) and not admin(chat,uid):
         try: bot.delete_message(chat,m.message_id); bot.send_message(chat,'🔗 Links are not allowed in this group.')
         except Exception: pass
         return
+
+    # Custom word filters
     if body and not body.startswith('/'):
         for row in filters(chat):
             if row['keyword'] in body.lower():
@@ -1557,11 +1370,10 @@ def monitor(m):
                 except Exception: log.exception('Filter reply failed')
                 break
 
-    # Avoid clearing AFK status immediately if this message was the /afk command itself
     if body.startswith('/afk'):
         return
 
-    # Remove AFK when the member speaks again.
+    # Remove AFK when member speaks
     with DB_LOCK, connect() as c:
         away = c.execute('SELECT reason,since,media_type,media_file_id FROM global_afk WHERE user_id=?', (uid,)).fetchone()
         if away:
@@ -1570,7 +1382,8 @@ def monitor(m):
     if away:
         AFK_NOTICE.pop((chat,uid), None)
         bot.reply_to(m, f'👋 Welcome back {esc(user_name(m.from_user))}! Away for <b>{duration_text(time.time()-away["since"])}</b>.')
-    # Detect AFK users from replies, text mentions, and @username entities.
+
+    # Detect AFK mentions
     targets = {}
     if m.reply_to_message and m.reply_to_message.from_user:
         u = m.reply_to_message.from_user

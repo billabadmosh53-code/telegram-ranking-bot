@@ -1002,47 +1002,63 @@ def ai(m):
     if len(p) < 2: return bot.reply_to(m, 'Usage: /ai ask a question')
     if not GROQ_API_KEY:
         return bot.reply_to(m, 'AI is optional. Add GROQ_API_KEY to Render Environment to enable /ai.')
-    try:
-        import urllib.request, urllib.error
-        payload = json.dumps({
-            'model': GROQ_MODEL,
-            'messages': [
-                {'role':'system','content':'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
-                {'role':'user','content':p[1][:3000]}
-            ],
-            'max_tokens':500,
-            'temperature':0.7
-        }).encode('utf-8')
-        req = urllib.request.Request(
-            'https://api.groq.com/openai/v1/chat/completions', data=payload,
-            headers={
-                'Authorization': f'Bearer {GROQ_API_KEY}',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
-                'Accept': 'application/json',
-            },
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=35) as response:
-            result = json.loads(response.read().decode('utf-8'))
-        answer = result.get('choices',[{}])[0].get('message',{}).get('content') or 'No answer generated.'
+
+    # Try configured model, fallback to currently active Groq models if 404
+    candidate_models = [
+        os.getenv('GROQ_MODEL', '').strip(),
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'gemma2-9b-it'
+    ]
+    candidate_models = [x for x in candidate_models if x]
+    
+    last_err = ''
+    for mod in candidate_models:
         try:
-            bot.reply_to(m, answer[:3500], parse_mode=None)
-        except Exception:
-            bot.reply_to(m, esc(answer)[:3500])
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode('utf-8', errors='replace')[:250]
-        log.warning('Groq AI HTTP error %s: %s', e.code, detail)
-        if e.code == 429:
-            message = 'Groq free usage limit reached. Please try again after the limit resets.'
-        elif e.code in (401, 403):
-            message = 'Groq API key was rejected. Check GROQ_API_KEY in Render Environment.'
-        else:
-            message = f'Groq AI request failed (HTTP {e.code}). Please try again later.'
-        bot.reply_to(m, message)
-    except Exception as e:
-        log.exception('Groq AI error')
-        bot.reply_to(m, 'AI request failed. Check GROQ_API_KEY, GROQ_MODEL, and Render logs: ' + esc(e)[:200])
+            import urllib.request, urllib.error
+            payload = json.dumps({
+                'model': mod,
+                'messages': [
+                    {'role':'system','content':'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
+                    {'role':'user','content':p[1][:3000]}
+                ],
+                'max_tokens':500,
+                'temperature':0.7
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                'https://api.groq.com/openai/v1/chat/completions', data=payload,
+                headers={
+                    'Authorization': f'Bearer {GROQ_API_KEY}',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+                    'Accept': 'application/json',
+                },
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=25) as response:
+                result = json.loads(response.read().decode('utf-8'))
+            answer = result.get('choices',[{}])[0].get('message',{}).get('content') or 'No answer generated.'
+            try:
+                bot.reply_to(m, answer[:3500], parse_mode=None)
+            except Exception:
+                bot.reply_to(m, esc(answer)[:3500])
+            return
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}"
+            # If 404 (model not found), try next model in candidate_models
+            if e.code == 404:
+                continue
+            elif e.code == 429:
+                return bot.reply_to(m, '⏳ Groq free usage limit reached. Please try again after the limit resets.')
+            elif e.code in (401, 403):
+                return bot.reply_to(m, '🔒 Groq API key was rejected. Check GROQ_API_KEY in Render Environment.')
+            else:
+                return bot.reply_to(m, f'❌ Groq AI request failed ({last_err}). Please try again later.')
+        except Exception as e:
+            log.exception('Groq AI error')
+            return bot.reply_to(m, '❌ AI request failed: ' + esc(str(e))[:200])
+
+    bot.reply_to(m, f'❌ Groq AI request failed ({last_err}). Check GROQ_MODEL in Render Environment.')
 
 # ---------------- XP / LEVELS ----------------
 def xp_level(points):
@@ -1151,12 +1167,13 @@ def get_instagram_video_stream(url):
     if not m: return None
     shortcode = m.group(1)
 
-    # 1. Proxy mirror scraping (100% bypasses Render 429 IP block)
+    # 1. Proxy mirror scraping (NO 'www.' prefix to avoid [Errno -2] Name or service not known)
     mirrors = [
-        f'https://www.ddinstagram.com/reel/{shortcode}/',
-        f'https://www.instagramez.com/reel/{shortcode}/',
+        f'https://ddinstagram.com/reel/{shortcode}/',
+        f'https://instagramez.com/reel/{shortcode}/',
         f'https://kkinstagram.com/reel/{shortcode}/',
-        f'https://www.ddinstagram.com/p/{shortcode}/'
+        f'https://ddinstagram.com/p/{shortcode}/',
+        f'https://ddinstagram.com/videos/{shortcode}/1'
     ]
     headers_bot = {
         'User-Agent': 'TelegramBot (like TwitterBot)',
@@ -1165,13 +1182,14 @@ def get_instagram_video_stream(url):
     for m_url in mirrors:
         try:
             req = urllib.request.Request(m_url, headers=headers_bot)
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=12) as resp:
                 ct = resp.headers.get('Content-Type', '').lower()
                 if 'video' in ct or 'mp4' in ct or resp.geturl().endswith('.mp4'):
                     return resp.geturl()
                 html = resp.read().decode('utf-8', errors='ignore')
                 v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
                           re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I) or \
+                          re.search(r'<meta\s+name="twitter:player:stream"\s+content="([^"]+)"', html, re.I) or \
                           re.search(r'src="(https?://[^"]+\.mp4[^"]*)"', html, re.I)
                 if v_match:
                     v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
@@ -1180,7 +1198,28 @@ def get_instagram_video_stream(url):
         except Exception:
             continue
 
-    # 2. Authenticated API with cookies if available
+    # 2. Cobalt public fast API fallback
+    cobalt_hosts = [
+        'https://co.wuk.sh/api/json',
+        'https://cobalt-api.kwiatekm.tokyo/api/json',
+        'https://cobalt.xy24.eu/api/json'
+    ]
+    for c_url in cobalt_hosts:
+        try:
+            payload = json.dumps({'url': f'https://www.instagram.com/reel/{shortcode}/', 'videoQuality': '720'}).encode('utf-8')
+            req = urllib.request.Request(c_url, data=payload, headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'MishraRobot/4.0'
+            })
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if res_data.get('status') in ('tunnel', 'redirect', 'stream') and res_data.get('url'):
+                    return res_data['url']
+        except Exception:
+            continue
+
+    # 3. Authenticated API with cookies if available
     cookie_str = make_cookie_header(COOKIES_DATA)
     if cookie_str:
         try:
@@ -1261,11 +1300,12 @@ def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
         }
 
         # NEVER hit instagram.com directly from Render to avoid 429
+        # Route through ddinstagram.com (NO 'www.' to avoid DNS failure)
         target_dl_url = url
         if platform == 'instagram':
             m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
             if m:
-                target_dl_url = f'https://www.ddinstagram.com/reel/{m.group(1)}/'
+                target_dl_url = f'https://ddinstagram.com/reel/{m.group(1)}/'
         else:
             if COOKIE_FILE_PATH and os.path.exists(COOKIE_FILE_PATH):
                 opts['cookiefile'] = COOKIE_FILE_PATH

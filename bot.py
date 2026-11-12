@@ -17,8 +17,8 @@ if not TOKEN:
     raise RuntimeError('BOT_TOKEN environment variable is missing; set it in Render Environment.')
 PORT = int(os.getenv('PORT', '10000'))
 DB_PATH = os.getenv('DATABASE_PATH', 'mishrarobot.db')
-GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip()
-GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile').strip()
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '').strip().strip("'").strip('"')
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant').strip().strip("'").strip('"')
 logging.basicConfig(level=os.getenv('LOG_LEVEL', 'INFO').upper(), format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('MishraRobot')
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML', threaded=True, num_threads=8)
@@ -241,7 +241,7 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /profile — profile card
 /level — XP, level & group XP leaderboard
 /coins /daily — wallet and daily reward
-/download URL — supported public media
+/download URL — Instagram Reels & Pinterest Pins
 /ship — daily couple
 /challenge — random challenge
 /afk [reason] /back — AFK status
@@ -735,7 +735,7 @@ def lock_approval(m):
             bot.restrict_chat_member(m.chat.id,target,permissions=types.ChatPermissions(can_send_messages=True,can_send_audios=True,can_send_documents=True,can_send_photos=True,can_send_videos=True,can_send_video_notes=True,can_send_voice_notes=True,can_send_polls=True,can_send_other_messages=True,can_add_web_page_previews=True))
         except Exception:
             log.exception('Could not lift restrictions for approved user')
-        return bot.reply_to(m, f'✅ Approved <code>{target}</code> for this group.')
+        return bot.reply_to(m, f'✅ <code>{target}</code> approved in the bot whitelist. Note: Telegram group-wide /lock permissions may still apply to everyone; approval cannot override a group-wide restriction.')
     with DB_LOCK, connect() as c:
         c.execute('DELETE FROM lock_approved WHERE chat_id=? AND user_id=?',(m.chat.id,target))
     try:
@@ -995,70 +995,107 @@ def tag_all(m):
         extra = esc(reason)+'\n' if i == 0 and reason else ''
         bot.send_message(m.chat.id, header+extra+' '.join(mentions[i:i+30]), disable_web_page_preview=True)
 
-# ---------------- OPTIONAL AI (GROQ FREE TIER) ----------------
+# ---------------- OPTIONAL AI (GROQ) ----------------
 @bot.message_handler(commands=['ai'])
 def ai(m):
     p = (m.text or '').split(maxsplit=1)
-    if len(p) < 2: return bot.reply_to(m, 'Usage: /ai ask a question')
-    if not GROQ_API_KEY:
+    if len(p) < 2:
+        return bot.reply_to(m, 'Usage: /ai ask a question')
+    raw_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY', '')
+    api_key = str(raw_key).strip().strip("'").strip('"')
+    if not api_key:
         return bot.reply_to(m, 'AI is optional. Add GROQ_API_KEY to Render Environment to enable /ai.')
 
-    # Try configured model, fallback to currently active Groq models if 404
-    candidate_models = [
-        os.getenv('GROQ_MODEL', '').strip(),
-        'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'gemma2-9b-it'
-    ]
-    candidate_models = [x for x in candidate_models if x]
-    
-    last_err = ''
-    for mod in candidate_models:
+    query = p[1][:3000]
+    user_configured_model = str(GROQ_MODEL or os.getenv('GROQ_MODEL', '')).strip().strip("'").strip('"')
+
+    # Models list to try in order:
+    # 1. User specified model
+    # 2. Modern Groq production models (openai/gpt-oss-20b, openai/gpt-oss-120b)
+    # 3. Llama models (llama-3.3-70b-versatile, llama-3.1-8b-instant)
+    candidate_models = []
+    if user_configured_model:
+        candidate_models.append(user_configured_model)
+    for default_mod in ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b']:
+        if default_mod not in candidate_models:
+            candidate_models.append(default_mod)
+
+    # 1. Try with official OpenAI SDK first
+    try:
+        from openai import OpenAI
+        client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key, timeout=30.0)
+        for model_name in candidate_models:
+            try:
+                resp = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {'role': 'system', 'content': 'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
+                        {'role': 'user', 'content': query}
+                    ],
+                    max_tokens=600,
+                    temperature=0.7
+                )
+                answer = resp.choices[0].message.content or 'No reply generated.'
+                try:
+                    return bot.reply_to(m, answer[:3500], parse_mode=None)
+                except Exception:
+                    return bot.reply_to(m, esc(answer)[:3500])
+            except Exception as e_model:
+                err_str = str(e_model).lower()
+                # If model is not found (404), continue to next model!
+                if '404' in err_str or 'model_not_found' in err_str:
+                    continue
+                if '401' in err_str or 'invalid_api_key' in err_str:
+                    return bot.reply_to(m, '🔒 Groq API key galat hai. Render Environment mein GROQ_API_KEY check karein.')
+                if '429' in err_str or 'rate_limit' in err_str:
+                    return bot.reply_to(m, '⏳ Groq usage limit reached. Thodi der baad try karein.')
+                raise e_model
+    except Exception as e_sdk:
+        log.warning("OpenAI SDK exception: %s", e_sdk)
+
+    # 2. Direct urllib fallback
+    import urllib.request, urllib.error
+    for model_name in candidate_models:
         try:
-            import urllib.request, urllib.error
             payload = json.dumps({
-                'model': mod,
+                'model': model_name,
                 'messages': [
-                    {'role':'system','content':'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
-                    {'role':'user','content':p[1][:3000]}
+                    {'role': 'system', 'content': 'You are MishraRobot, a helpful and safe Telegram group assistant. Be concise.'},
+                    {'role': 'user', 'content': query}
                 ],
-                'max_tokens':500,
-                'temperature':0.7
+                'max_tokens': 600,
+                'temperature': 0.7
             }).encode('utf-8')
             req = urllib.request.Request(
-                'https://api.groq.com/openai/v1/chat/completions', data=payload,
+                'https://api.groq.com/openai/v1/chat/completions',
+                data=payload,
                 headers={
-                    'Authorization': f'Bearer {GROQ_API_KEY}',
+                    'Authorization': f'Bearer {api_key}',
                     'Content-Type': 'application/json',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
                     'Accept': 'application/json',
                 },
                 method='POST'
             )
-            with urllib.request.urlopen(req, timeout=25) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
-            answer = result.get('choices',[{}])[0].get('message',{}).get('content') or 'No answer generated.'
+            answer = result.get('choices', [{}])[0].get('message', {}).get('content') or 'No answer generated.'
             try:
-                bot.reply_to(m, answer[:3500], parse_mode=None)
+                return bot.reply_to(m, answer[:3500], parse_mode=None)
             except Exception:
-                bot.reply_to(m, esc(answer)[:3500])
-            return
+                return bot.reply_to(m, esc(answer)[:3500])
         except urllib.error.HTTPError as e:
-            last_err = f"HTTP {e.code}"
-            # If 404 (model not found), try next model in candidate_models
             if e.code == 404:
                 continue
-            elif e.code == 429:
-                return bot.reply_to(m, '⏳ Groq free usage limit reached. Please try again after the limit resets.')
-            elif e.code in (401, 403):
-                return bot.reply_to(m, '🔒 Groq API key was rejected. Check GROQ_API_KEY in Render Environment.')
-            else:
-                return bot.reply_to(m, f'❌ Groq AI request failed ({last_err}). Please try again later.')
-        except Exception as e:
-            log.exception('Groq AI error')
-            return bot.reply_to(m, '❌ AI request failed: ' + esc(str(e))[:200])
+            if e.code in (401, 403):
+                return bot.reply_to(m, '🔒 Groq API key galat hai ya access nahi hai. Render mein GROQ_API_KEY check karein.')
+            if e.code == 429:
+                return bot.reply_to(m, '⏳ Groq usage limit reached. Thodi der baad try karein.')
+            return bot.reply_to(m, f'❌ Groq AI request failed (HTTP {e.code}).')
+        except Exception:
+            continue
 
-    bot.reply_to(m, f'❌ Groq AI request failed ({last_err}). Check GROQ_MODEL in Render Environment.')
+    bot.reply_to(m, '❌ Groq AI par koi working model nahi mila. Render mein GROQ_MODEL variable ko delete/clear kar dein taaki bot auto-select kare.')
 
 # ---------------- XP / LEVELS ----------------
 def xp_level(points):
@@ -1115,17 +1152,17 @@ def daily_reward(m):
         c.execute('UPDATE wallet SET coins=coins+?,last_daily=? WHERE user_id=?',(reward,today,m.from_user.id))
     bot.reply_to(m,f'🎁 Daily reward: <b>+{reward} coins</b>! Use /coins to check your balance.')
 
-# ---------------- INSTAGRAM & PINTEREST VIDEO DOWNLOADER (NO 429 - WITH BUTTON) ----------------
+# ---------------- INSTAGRAM & PINTEREST VIDEO DOWNLOADER ----------------
 PENDING_DL = {}
 PENDING_LOCK = threading.Lock()
 
 def store_dl_url(url, platform):
     with PENDING_LOCK:
-        token = uuid.uuid4().hex[:8]
         now = time.time()
-        for k in list(PENDING_DL.keys()):
-            if now - PENDING_DL[k].get('ts', 0) > 3600:
-                PENDING_DL.pop(k, None)
+        for key in list(PENDING_DL):
+            if now - PENDING_DL[key].get('ts', 0) > 3600:
+                PENDING_DL.pop(key, None)
+        token = uuid.uuid4().hex[:8]
         PENDING_DL[token] = {'url': url, 'platform': platform, 'ts': now}
         return token
 
@@ -1133,210 +1170,110 @@ def get_dl_url(token):
     with PENDING_LOCK:
         return PENDING_DL.get(token)
 
-INSTA_VIDEO_RE = re.compile(r'https?://(?:www\.)?instagram\.com/(?:reel|tv|p)/[A-Za-z0-9_-]+', re.I)
-PINTEREST_VIDEO_RE = re.compile(r'https?://(?:www\.|[a-z]{2}\.)?(?:pinterest\.com/pin/|pin\.it/)[A-Za-z0-9_/-]+', re.I)
+INSTA_VIDEO_RE = re.compile(r'https?://(?:www\.|m\.)?instagram\.com/(?:reel|tv|p)/[A-Za-z0-9_-]+(?:/)?(?:\?[^\s]*)?', re.I)
+PINTEREST_VIDEO_RE = re.compile(r'https?://(?:(?:www|[a-z]{2})\.)?(?:pinterest\.com/pin/|pin\.it/)[A-Za-z0-9_/-]+(?:\?[^\s]*)?', re.I)
 
-def make_cookie_header(cookie_text):
-    if not cookie_text: return ''
-    cookies = []
-    for line in cookie_text.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'): continue
-        parts = line.split('\t')
-        if len(parts) >= 7: cookies.append(f"{parts[5]}={parts[6]}")
-        elif '=' in line and len(parts) == 1: cookies.append(line)
-    return "; ".join(cookies)
 
 def get_pinterest_video_stream(url):
     import urllib.request, re
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             html = resp.read().decode('utf-8', errors='ignore')
             v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
                       re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I)
             if v_match:
                 return v_match.group(1).replace('&amp;', '&')
     except Exception as e:
-        log.warning("Pinterest video direct fetch error: %s", e)
-    return None
-
-def get_instagram_video_stream(url):
-    import re, urllib.request, json
-    m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
-    if not m: return None
-    shortcode = m.group(1)
-
-    # 1. Proxy mirror scraping (NO 'www.' prefix to avoid [Errno -2] Name or service not known)
-    mirrors = [
-        f'https://ddinstagram.com/reel/{shortcode}/',
-        f'https://instagramez.com/reel/{shortcode}/',
-        f'https://kkinstagram.com/reel/{shortcode}/',
-        f'https://ddinstagram.com/p/{shortcode}/',
-        f'https://ddinstagram.com/videos/{shortcode}/1'
-    ]
-    headers_bot = {
-        'User-Agent': 'TelegramBot (like TwitterBot)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    }
-    for m_url in mirrors:
-        try:
-            req = urllib.request.Request(m_url, headers=headers_bot)
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                ct = resp.headers.get('Content-Type', '').lower()
-                if 'video' in ct or 'mp4' in ct or resp.geturl().endswith('.mp4'):
-                    return resp.geturl()
-                html = resp.read().decode('utf-8', errors='ignore')
-                v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
-                          re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I) or \
-                          re.search(r'<meta\s+name="twitter:player:stream"\s+content="([^"]+)"', html, re.I) or \
-                          re.search(r'src="(https?://[^"]+\.mp4[^"]*)"', html, re.I)
-                if v_match:
-                    v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
-                    if v_url.startswith('http'):
-                        return v_url
-        except Exception:
-            continue
-
-    # 2. Cobalt public fast API fallback
-    cobalt_hosts = [
-        'https://co.wuk.sh/api/json',
-        'https://cobalt-api.kwiatekm.tokyo/api/json',
-        'https://cobalt.xy24.eu/api/json'
-    ]
-    for c_url in cobalt_hosts:
-        try:
-            payload = json.dumps({'url': f'https://www.instagram.com/reel/{shortcode}/', 'videoQuality': '720'}).encode('utf-8')
-            req = urllib.request.Request(c_url, data=payload, headers={
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'MishraRobot/4.0'
-            })
-            with urllib.request.urlopen(req, timeout=8) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                if res_data.get('status') in ('tunnel', 'redirect', 'stream') and res_data.get('url'):
-                    return res_data['url']
-        except Exception:
-            continue
-
-    # 3. Authenticated API with cookies if available
-    cookie_str = make_cookie_header(COOKIES_DATA)
-    if cookie_str:
-        try:
-            req = urllib.request.Request(f'https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis', headers={
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-                'Cookie': cookie_str, 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json'
-            })
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-                items = data.get('items', [])
-                if items and items[0].get('video_versions'):
-                    return items[0]['video_versions'][0]['url']
-                media = data.get('graphql', {}).get('shortcode_media', {})
-                if media and media.get('is_video') and media.get('video_url'):
-                    return media['video_url']
-        except Exception:
-            pass
-
+        log.warning("Pinterest direct extraction failed: %s", e)
     return None
 
 def send_download_button(chat_id, message_id, url, platform):
     token = store_dl_url(url, platform)
-    plat_title = "Instagram Reel" if platform == "instagram" else "Pinterest Video"
+    title = 'Instagram Reel' if platform == 'instagram' else 'Pinterest Video'
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📥 Download Video", callback_data=f"dlv:{token}"))
-    bot.send_message(
-        chat_id,
-        f"🎬 <b>{plat_title} Link Mila!</b>\nVideo download karne ke liye niche button dabayein:",
-        reply_to_message_id=message_id,
-        reply_markup=kb
-    )
+    kb.add(types.InlineKeyboardButton('📥 Download Video', callback_data=f'dlv:{token}'))
+    bot.send_message(chat_id, f'🎬 <b>{title} link mil gaya!</b>\nDownload ke liye button dabayein:',
+                     reply_to_message_id=message_id, reply_markup=kb)
+
 
 def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
     temp_dir = None
     try:
-        temp_dir = tempfile.mkdtemp(prefix='mishra_v_')
-
-        # 1. Instagram Direct Fast Stream (Bypasses 429)
-        if platform == 'instagram':
-            v_url = get_instagram_video_stream(url)
-            if v_url:
-                import urllib.request
-                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    buf = io.BytesIO(resp.read(48 * 1024 * 1024))
-                buf.name = 'instagram_video.mp4'
-                bot.send_video(chat_id, buf, caption='📥 Downloaded from Instagram', reply_to_message_id=reply_to_mid, timeout=120)
-                try: bot.delete_message(chat_id, status_mid)
-                except Exception: pass
-                return
-
-        # 2. Pinterest Direct Fast Stream
+        # Fast direct stream for Pinterest if og:video is present
         if platform == 'pinterest':
-            v_url = get_pinterest_video_stream(url)
-            if v_url:
+            p_stream = get_pinterest_video_stream(url)
+            if p_stream:
                 import urllib.request
-                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
+                req = urllib.request.Request(p_stream, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     buf = io.BytesIO(resp.read(48 * 1024 * 1024))
                 buf.name = 'pinterest_video.mp4'
-                bot.send_video(chat_id, buf, caption='📥 Downloaded from Pinterest', reply_to_message_id=reply_to_mid, timeout=120)
+                bot.send_video(chat_id, buf, caption='📥 <b>Pinterest Video</b>', reply_to_message_id=reply_to_mid, timeout=120)
                 try: bot.delete_message(chat_id, status_mid)
                 except Exception: pass
                 return
 
-        # 3. Universal yt-dlp Video Extractor (For Pinterest & DDInstagram Mirror)
         import yt_dlp
+        temp_dir = tempfile.mkdtemp(prefix='mishra_dl_')
         opts = {
-            'outtmpl': os.path.join(temp_dir, '%(title).80s.%(ext)s'),
-            'format': 'bestvideo+bestaudio/best[filesize<48M]/best',
+            'outtmpl': os.path.join(temp_dir, '%(id)s.%(ext)s'),
+            'format': 'bestvideo+bestaudio/best',
             'noplaylist': True,
-            'max_filesize': 48 * 1024 * 1024,
-            'socket_timeout': 30,
+            'socket_timeout': 25,
             'retries': 2,
+            'fragment_retries': 2,
             'quiet': True,
             'no_warnings': True,
             'restrictfilenames': True,
         }
+        if platform == 'instagram' and COOKIE_FILE_PATH and os.path.isfile(COOKIE_FILE_PATH):
+            opts['cookiefile'] = COOKIE_FILE_PATH
 
-        # NEVER hit instagram.com directly from Render to avoid 429
-        # Route through ddinstagram.com (NO 'www.' to avoid DNS failure)
-        target_dl_url = url
-        if platform == 'instagram':
-            m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
-            if m:
-                target_dl_url = f'https://ddinstagram.com/reel/{m.group(1)}/'
-        else:
-            if COOKIE_FILE_PATH and os.path.exists(COOKIE_FILE_PATH):
-                opts['cookiefile'] = COOKIE_FILE_PATH
-
-        info = None
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(target_dl_url, download=True)
-
-        candidates = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, x))]
-        video_files = [x for x in candidates if os.path.splitext(x)[1].lower() in ('.mp4', '.m4v', '.mov', '.webm', '.mkv')]
-
-        if not video_files:
-            raise RuntimeError('Is link par koi downloadable video nahi mila.')
-
-        path = max(video_files, key=os.path.getsize)
-        if os.path.getsize(path) > 49 * 1024 * 1024:
-            raise RuntimeError('Video size Telegram ke 49 MB upload limit se bada hai.')
-
-        title = info.get('title') if isinstance(info, dict) else 'Video'
-        caption = f"📥 <b>{esc(title)[:800]}</b>"
-        with open(path, 'rb') as vf:
-            bot.send_video(chat_id, vf, caption=caption, reply_to_message_id=reply_to_mid, timeout=120)
-
-        try: bot.delete_message(chat_id, status_mid)
-        except Exception: pass
-
+            info = ydl.extract_info(url, download=True)
+        files = [os.path.join(temp_dir, name) for name in os.listdir(temp_dir)
+                 if os.path.isfile(os.path.join(temp_dir, name)) and not name.endswith(('.part', '.ytdl'))]
+        if not files:
+            raise RuntimeError('Is link se downloadable media nahi mila. Link public ho aur platform access allow karta ho.')
+        path = max(files, key=os.path.getsize)
+        size = os.path.getsize(path)
+        if size <= 0:
+            raise RuntimeError('Downloaded file khaali hai.')
+        if size > 49 * 1024 * 1024:
+            raise RuntimeError('File 49 MB se badi hai; Telegram upload limit ke andar wali quality chunein.')
+        ext = os.path.splitext(path)[1].lower()
+        title = (info.get('title') if isinstance(info, dict) else None) or 'Downloaded media'
+        caption = f'📥 <b>{esc(title)[:700]}</b>'
+        with open(path, 'rb') as media:
+            if ext in ('.mp4', '.m4v', '.mov', '.webm'):
+                bot.send_video(chat_id, media, caption=caption, reply_to_message_id=reply_to_mid, timeout=120)
+            else:
+                bot.send_document(chat_id, media, caption=caption, reply_to_message_id=reply_to_mid, timeout=120)
+        try:
+            bot.delete_message(chat_id, status_mid)
+        except Exception:
+            pass
     except Exception as e:
-        log.exception("Download video error: %s", e)
-        err_text = f"❌ <b>Download Error:</b>\n{esc(str(e))[:250]}"
-        try: bot.edit_message_text(err_text, chat_id, status_mid)
-        except Exception: bot.send_message(chat_id, err_text, reply_to_message_id=reply_to_mid)
+        log.exception('Download failed for %s', platform)
+        detail = str(e)
+        low = detail.lower()
+        if '429' in low or 'too many requests' in low:
+            detail = 'Platform ne requests limit kar di hain (HTTP 429). Kuch der baad dobara try karein.'
+        elif 'unable to download webpage' in low or 'name or service not known' in low or 'temporary failure in name resolution' in low:
+            detail = 'Website/DNS abhi reachable nahi hai. Kuch der baad dobara try karein.'
+        elif 'login' in low or 'private' in low or 'cookies' in low:
+            detail = 'Ye media login/private ho sakta hai. Sirf public link ya valid cookies use karein.'
+        elif 'yt_dlp' in low or 'no module named' in low:
+            detail = 'Downloader dependency missing hai. requirements.txt mein yt-dlp install hona chahiye.'
+        elif 'requested format is not available' in low:
+            detail = 'Pinterest ne is pin ke liye downloadable format expose nahi kiya. Agar phir bhi error aaye to pin public nahi hai.'
+        err = f'❌ <b>Download Error:</b>\n{esc(detail)[:350]}'
+        try:
+            bot.edit_message_text(err, chat_id, status_mid)
+        except Exception:
+            try: bot.send_message(chat_id, err, reply_to_message_id=reply_to_mid)
+            except Exception: log.exception('Could not send download error message')
     finally:
         if temp_dir:
             import shutil
@@ -1347,40 +1284,40 @@ def download_button_callback(call):
     token = call.data.split(':', 1)[1]
     item = get_dl_url(token)
     if not item:
-        return bot.answer_callback_query(call.id, '⚠️ Yeh button expire ho chuka hai. Link dobara bhejein.', show_alert=True)
-
-    bot.answer_callback_query(call.id, '⏳ Video download ho raha hai...')
+        return bot.answer_callback_query(call.id, '⚠️ Button expire ho gaya. Link dobara bhejein.', show_alert=True)
+    bot.answer_callback_query(call.id, '⏳ Download shuru ho raha hai...')
     try:
-        bot.edit_message_text('⬇️ Downloading video, kripya thoda intezar karein…', call.message.chat.id, call.message.message_id)
-    except Exception: pass
+        bot.edit_message_text('⬇️ Downloading… thoda intezar karein.', call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    threading.Thread(target=download_video_thread,
+                     args=(call.message.chat.id, call.message.message_id, call.message.message_id, item['url'], item['platform']),
+                     daemon=True).start()
 
-    threading.Thread(
-        target=download_video_thread,
-        args=(call.message.chat.id, call.message.message_id, call.message.message_id, item['url'], item['platform']),
-        daemon=True
-    ).start()
 
-@bot.message_handler(commands=['download','dl'])
+@bot.message_handler(commands=['download', 'dl'])
 def download_media(m):
     parts = (m.text or '').split(maxsplit=1)
-    if len(parts) < 2: return
-    url = parts[1].strip()
-    if INSTA_VIDEO_RE.search(url):
+    if len(parts) < 2:
+        return bot.reply_to(m, 'Usage: /download URL')
+    url = parts[1].strip().rstrip('.,!?)')
+    if INSTA_VIDEO_RE.fullmatch(url):
         send_download_button(m.chat.id, m.message_id, url, 'instagram')
-    elif PINTEREST_VIDEO_RE.search(url):
+    elif PINTEREST_VIDEO_RE.fullmatch(url):
         send_download_button(m.chat.id, m.message_id, url, 'pinterest')
     else:
-        bot.reply_to(m, 'ℹ️ Bot par sirf Instagram Reels aur Pinterest Videos ka download supported hai.')
+        bot.reply_to(m, 'ℹ️ Is build mein Instagram Reels aur Pinterest Pins supported hain. Private/login-protected media download nahi hoga.')
+
 
 @bot.message_handler(func=lambda m: not group(m) and bool(m.text), content_types=['text'])
 def pm_auto_download(m):
     body = (m.text or '').strip()
-    insta_m = INSTA_VIDEO_RE.search(body)
-    pin_m = PINTEREST_VIDEO_RE.search(body)
-    if insta_m:
-        send_download_button(m.chat.id, m.message_id, insta_m.group(0), 'instagram')
-    elif pin_m:
-        send_download_button(m.chat.id, m.message_id, pin_m.group(0), 'pinterest')
+    insta = INSTA_VIDEO_RE.search(body)
+    pin = PINTEREST_VIDEO_RE.search(body)
+    if insta:
+        send_download_button(m.chat.id, m.message_id, insta.group(0).rstrip('.,!?)'), 'instagram')
+    elif pin:
+        send_download_button(m.chat.id, m.message_id, pin.group(0).rstrip('.,!?)'), 'pinterest')
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
@@ -1466,7 +1403,9 @@ def monitor(m):
     for ent in (m.entities or m.caption_entities or []):
         if ent.type == 'text_mention' and ent.user: targets[ent.user.id] = ent.user
         elif ent.type == 'mention':
-            username = body[ent.offset:ent.offset+ent.length].lstrip('@').lower()
+            encoded = body.encode('utf-16-le')
+            start_byte, end_byte = ent.offset * 2, (ent.offset + ent.length) * 2
+            username = encoded[start_byte:end_byte].decode('utf-16-le', errors='ignore').lstrip('@').lower()
             with DB_LOCK, connect() as c:
                 r = c.execute('SELECT user_id,name,username FROM global_users WHERE lower(replace(username, "@", ""))=? LIMIT 1', (username,)).fetchone()
             if r:
@@ -1494,9 +1433,14 @@ def main():
     while True:
         try:
             bot.infinity_polling(skip_pending=True)
-        except Exception:
-            log.exception('Polling stopped; retrying in 5 seconds')
-            time.sleep(5)
+        except Exception as e:
+            log.exception('Polling stopped')
+            message = str(e).lower()
+            if '409' in message or 'conflict' in message or 'terminated by other getupdates' in message:
+                log.critical('Telegram reports another polling session for this token. Stop other Render instances/services; not retrying in a tight loop.')
+                time.sleep(30)
+            else:
+                time.sleep(5)
 
 if __name__ == '__main__':
     main()

@@ -267,9 +267,10 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /antispam on|off — choose threshold/action; /antispam approve|unapprove (reply/ID)
  /antilink on|off /adminlog on|off
 
-<b>Welcome</b>
-/setwelcome TEXT /welcome on|off
-/setgoodbye TEXT /goodbye on|off
+<b>Welcome & Goodbye (Text + Sticker/GIF/Photo/Video/Audio)</b>
+/setwelcome [TEXT] — reply to sticker/GIF/photo/video/audio or type text
+/setgoodbye [TEXT] — reply to sticker/GIF/photo/video/audio or type text
+/welcome on|off /goodbye on|off
 
 <b>Media & mentions</b>
 /mmf TOP ; BOTTOM — reply to photo/static sticker
@@ -278,7 +279,8 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 
 <b>New Features & Games</b>
 /chatbot on|off — smart auto-reply (text, sticker & GIF) when called
-/whisper @user secret — private secret whisper button in group
+/whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
+/ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
 /cricket /guess — guess cricketer game (auto-asks every 1 hr & awards coins)
 
@@ -588,27 +590,106 @@ def welcome_toggle(m):
 @bot.message_handler(commands=['setwelcome', 'setgoodbye'])
 def set_welcome(m):
     if not need_admin(m): return
+    cmd = (m.text or '').split()[0].split('@')[0].lower()
+    is_wel = (cmd == '/setwelcome')
+    prefix = 'welcome' if is_wel else 'goodbye'
     p = (m.text or '').split(maxsplit=1)
-    if len(p) < 2: return bot.reply_to(m, 'Provide a message. Placeholders: {name}, {group}, {username}, {id}.')
-    key = 'welcome_text' if p[0].split('@')[0] == '/setwelcome' else 'goodbye_text'
-    set_setting(m.chat.id, key, p[1][:1000]); bot.reply_to(m, '✅ Group message saved.')
+    extra_text = p[1].strip()[:1000] if len(p) > 1 else ''
+    reply = m.reply_to_message
+
+    media_type = 'text'
+    file_id = ''
+    caption_text = extra_text
+
+    if reply:
+        if reply.sticker:
+            media_type = 'sticker'
+            file_id = reply.sticker.file_id
+            caption_text = ''
+        elif reply.animation:
+            media_type = 'animation'
+            file_id = reply.animation.file_id
+            caption_text = extra_text or (reply.caption or '').strip()[:1000]
+        elif reply.photo:
+            media_type = 'photo'
+            file_id = reply.photo[-1].file_id
+            caption_text = extra_text or (reply.caption or '').strip()[:1000]
+        elif reply.video:
+            media_type = 'video'
+            file_id = reply.video.file_id
+            caption_text = extra_text or (reply.caption or '').strip()[:1000]
+        elif reply.audio:
+            media_type = 'audio'
+            file_id = reply.audio.file_id
+            caption_text = extra_text or (reply.caption or '').strip()[:1000]
+        elif reply.voice:
+            media_type = 'voice'
+            file_id = reply.voice.file_id
+            caption_text = extra_text or (reply.caption or '').strip()[:1000]
+        elif reply.text:
+            media_type = 'text'
+            caption_text = extra_text or reply.text.strip()[:1000]
+
+    if media_type == 'text' and not caption_text:
+        return bot.reply_to(
+            m,
+            f'Usage:\n• Type text: <code>{cmd} Welcome {{name}} to {{group}}!</code>\n'
+            f'• Or reply to any <b>Sticker, GIF, Photo, Video, or Audio</b> with <code>{cmd} [optional caption]</code>\n'
+            f'Placeholders: <code>{{name}}</code>, <code>{{group}}</code>, <code>{{username}}</code>, <code>{{id}}</code>'
+        )
+
+    set_setting(m.chat.id, f'{prefix}_type', media_type)
+    set_setting(m.chat.id, f'{prefix}_file_id', file_id)
+    set_setting(m.chat.id, f'{prefix}_text', caption_text)
+    bot.reply_to(m, f'✅ {prefix.capitalize()} saved! (Format: <b>{media_type.upper()}</b>)')
 
 def render_group_template(chat, u, template):
-    return template.replace('{name}', esc(user_name(u))).replace('{group}', esc(chat.title or 'the group')).replace('{username}', esc('@'+u.username if u.username else user_name(u))).replace('{id}', str(u.id))
+    if not template:
+        return ''
+    return (template
+            .replace('{name}', esc(user_name(u)))
+            .replace('{group}', esc(chat.title or 'the group'))
+            .replace('{username}', esc('@' + u.username if u.username else user_name(u)))
+            .replace('{id}', str(u.id)))
+
+def send_greeting_media(chat, u, prefix, default_text):
+    m_type = setting(chat.id, f'{prefix}_type', 'text')
+    f_id = setting(chat.id, f'{prefix}_file_id', '')
+    raw_txt = setting(chat.id, f'{prefix}_text', default_text)
+    rendered = render_group_template(chat, u, raw_txt) if raw_txt else ''
+    try:
+        if m_type == 'sticker' and f_id:
+            bot.send_sticker(chat.id, f_id)
+            if rendered:
+                bot.send_message(chat.id, rendered)
+        elif m_type == 'animation' and f_id:
+            bot.send_animation(chat.id, f_id, caption=rendered or None)
+        elif m_type == 'photo' and f_id:
+            bot.send_photo(chat.id, f_id, caption=rendered or None)
+        elif m_type == 'video' and f_id:
+            bot.send_video(chat.id, f_id, caption=rendered or None)
+        elif m_type == 'audio' and f_id:
+            bot.send_audio(chat.id, f_id, caption=rendered or None)
+        elif m_type == 'voice' and f_id:
+            bot.send_voice(chat.id, f_id, caption=rendered or None)
+        else:
+            bot.send_message(chat.id, rendered or render_group_template(chat, u, default_text))
+    except Exception:
+        log.exception('Greeting media send failed, falling back to text')
+        bot.send_message(chat.id, rendered or render_group_template(chat, u, default_text))
 
 @bot.message_handler(content_types=['new_chat_members'])
 def new_members(m):
     if setting(m.chat.id, 'welcome', 'on') != 'on': return
-    template = setting(m.chat.id, 'welcome_text', 'Welcome {name} to {group}! 🎉')
     for u in m.new_chat_members:
         remember_user(m.chat.id, u)
-        if u.id != bot.get_me().id: bot.send_message(m.chat.id, render_group_template(m.chat, u, template))
+        if u.id != bot.get_me().id:
+            send_greeting_media(m.chat, u, 'welcome', 'Welcome {name} to {group}! 🎉')
 
 @bot.message_handler(content_types=['left_chat_member'])
 def left_member(m):
     if setting(m.chat.id, 'goodbye') != 'on' or not m.left_chat_member: return
-    template = setting(m.chat.id, 'goodbye_text', 'Goodbye {name}! 👋')
-    bot.send_message(m.chat.id, render_group_template(m.chat, m.left_chat_member, template))
+    send_greeting_media(m.chat, m.left_chat_member, 'goodbye', 'Goodbye {name}! 👋')
 
 @bot.message_handler(commands=['filter'])
 def add_filter(m):
@@ -1505,80 +1586,312 @@ def chatbot_toggle(m):
     set_setting(m.chat.id, 'chatbot', p[1].lower())
     bot.reply_to(m, f'🤖 Chatbot <b>{"enabled" if p[1].lower()=="on" else "disabled"}</b>.')
 
-# ---------------- SECRET WHISPER SYSTEM ----------------
-@bot.message_handler(commands=['whisper'])
-def whisper_cmd(m):
-    raw = (m.text or '').split(maxsplit=1)
-    target_key = ''
-    target_label = ''
-    secret = ''
-
-    if m.reply_to_message and m.reply_to_message.from_user:
-        tu = m.reply_to_message.from_user
-        if tu.is_bot:
-            return bot.reply_to(m, '⛔ Bot ko whisper nahi bhej sakte.')
-        target_key = f'id:{tu.id}'
-        target_label = user_name(tu)
-        if len(raw) < 2 or not raw[1].strip():
-            return bot.reply_to(m, 'Usage: Reply to a user with <code>/whisper your secret message</code>')
-        secret = raw[1].strip()
-    else:
-        if len(raw) < 2:
-            return bot.reply_to(m, 'Usage:\n• Reply to user: <code>/whisper secret message</code>\n• Or tag user: <code>/whisper @username secret message</code>')
-        parts = raw[1].strip().split(maxsplit=1)
-        if len(parts) < 2:
-            return bot.reply_to(m, 'Please include both @username and your secret message.')
-        tok = parts[0].strip()
-        secret = parts[1].strip()
-        if tok.isdigit():
-            target_key = f'id:{tok}'
-            target_label = tok
-        elif tok.startswith('@'):
-            target_key = f'user:{tok.lstrip("@").lower()}'
-            target_label = tok
-        else:
-            return bot.reply_to(m, 'Reply to a user or specify a valid @username.')
-
-    if len(secret) > 190:
-        return bot.reply_to(m, '⚠️ Whisper message 190 characters se chhota rakhein (Telegram alert limit).')
-
+# ---------------- SECRET WHISPER SYSTEM (INLINE + BUTTONS + 3 MODES) ----------------
+def save_whisper(sender_id, sender_name, mode, target_key, secret_text):
     wid = uuid.uuid4().hex[:10]
     with DB_LOCK, connect() as c:
         c.execute('INSERT INTO whispers VALUES(?,?,?,?,?,?)',
-                  (wid, m.from_user.id, user_name(m.from_user), target_key, secret, time.time()))
+                  (wid, sender_id, sender_name, f'{mode}:{target_key}', secret_text[:190], time.time()))
         c.execute('DELETE FROM whispers WHERE created_at < ?', (time.time() - 7*86400,))
+    return wid
 
+@bot.message_handler(commands=['whisper'])
+def whisper_cmd(m):
     if group(m):
         safe_delete(m.chat.id, m.message_id)
 
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton('🔐 Show Whisper', callback_data=f'wh:{wid}'))
-    bot.send_message(
-        m.chat.id,
-        f'🤫 <b>Secret Whisper</b> from <a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a> to <b>{esc(target_label)}</b>!\n<i>Sirf wahi dekh sakte hain jinke liye yeh bheja gaya hai.</i>',
-        reply_markup=kb
+    raw = (m.text or '').split(maxsplit=1)
+    prefill = raw[1].strip() if len(raw) > 1 else ''
+    if not prefill and m.reply_to_message and m.reply_to_message.from_user:
+        tu = m.reply_to_message.from_user
+        if not tu.is_bot:
+            prefill = f'@{tu.username} ' if tu.username else f'{tu.id} '
+
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton('🤫 Send Secret Whisper (Private Input)', switch_inline_query_current_chat=prefill)
     )
+    msg_text = (
+        "🤫 <b>Secret Whisper System</b>\n"
+        "Group mein bina message dikhaye whisper bhejne ke liye niche button dabayein:\n\n"
+        "• <b>1. Specific User:</b> <code>@username aapka message</code> (ya User ID)\n"
+        "• <b>2. 1st Person Seen:</b> <code>aapka message</code> likh kar <i>'1st Person Seen'</i> chunein\n"
+        "• <b>3. For All:</b> <code>aapka message</code> likh kar <i>'For All'</i> chunein\n\n"
+        "<i>(Note: Inline mode ke liye @BotFather mein /setinline ON hona chahiye)</i>"
+    )
+    sent = bot.send_message(m.chat.id, msg_text, reply_markup=kb)
+    if group(m):
+        threading.Timer(25, lambda: safe_delete(m.chat.id, sent.message_id)).start()
+
+@bot.inline_handler(lambda query: True)
+def inline_whisper_handler(iq):
+    q = (iq.query or '').strip()
+    sender_id = iq.from_user.id
+    sender_name = user_name(iq.from_user)
+
+    if not q:
+        r_help = types.InlineQueryResultArticle(
+            id='help_wh',
+            title='🤫 Type your secret whisper...',
+            description='Format: @username secret message  OR  just type secret message',
+            input_message_content=types.InputTextMessageContent(
+                '🤫 Use <code>/whisper</code> to send a secret message!',
+                parse_mode='HTML'
+            )
+        )
+        return bot.answer_inline_query(iq.id, [r_help], cache_time=1, is_personal=True)
+
+    parts = q.split(maxsplit=1)
+    first_tok = parts[0].strip()
+    has_target = (len(parts) >= 2) and (first_tok.startswith('@') or first_tok.isdigit())
+
+    results = []
+
+    # Option 1: Specific User (if @username or numeric ID provided as first word)
+    if has_target:
+        target_label = first_tok
+        secret_msg = parts[1].strip()[:190]
+        target_key = f'id:{first_tok}' if first_tok.isdigit() else f'user:{first_tok.lstrip("@").lower()}'
+        wid1 = save_whisper(sender_id, sender_name, 'target', target_key, secret_msg)
+        kb1 = types.InlineKeyboardMarkup()
+        kb1.add(types.InlineKeyboardButton('🔐 Show Whisper', callback_data=f'wh:{wid1}'))
+        results.append(types.InlineQueryResultArticle(
+            id=f't_{wid1}',
+            title=f'1️⃣ Whisper to {target_label} (Only Target)',
+            description=f'Sirf {target_label} hi yeh secret message dekh payega',
+            input_message_content=types.InputTextMessageContent(
+                f'🤫 <b>Secret Whisper</b> from <a href="tg://user?id={sender_id}">{esc(sender_name)}</a> to <b>{esc(target_label)}</b>!\n'
+                f'<i>🔒 Sirf {esc(target_label)} hi is button par click karke padh sakte hain.</i>',
+                parse_mode='HTML'
+            ),
+            reply_markup=kb1
+        ))
+
+    # Option 2: 1st Person Who Sees It
+    full_secret = q[:190]
+    wid2 = save_whisper(sender_id, sender_name, 'first', '', full_secret)
+    kb2 = types.InlineKeyboardMarkup()
+    kb2.add(types.InlineKeyboardButton('👁️ Show Whisper (1st Person)', callback_data=f'wh:{wid2}'))
+    results.append(types.InlineQueryResultArticle(
+        id=f'f_{wid2}',
+        title='2️⃣ Whisper for 1st Person Seen',
+        description='Jo sabse pehle click karega sirf wahi dekh payega!',
+        input_message_content=types.InputTextMessageContent(
+            f'🤫 <b>1st-Seen Secret Whisper</b> from <a href="tg://user?id={sender_id}">{esc(sender_name)}</a>!\n'
+            f'<i>👁️ Jo member sabse pehle button dabayega, sirf wahi ise padh payega!</i>',
+            parse_mode='HTML'
+        ),
+        reply_markup=kb2
+    ))
+
+    # Option 3: For All
+    wid3 = save_whisper(sender_id, sender_name, 'all', '', full_secret)
+    kb3 = types.InlineKeyboardMarkup()
+    kb3.add(types.InlineKeyboardButton('🌍 Show Whisper (For All)', callback_data=f'wh:{wid3}'))
+    results.append(types.InlineQueryResultArticle(
+        id=f'a_{wid3}',
+        title='3️⃣ Whisper For All (Public Pop-up)',
+        description='Group ka koi bhi member click karke dekh sakta hai',
+        input_message_content=types.InputTextMessageContent(
+            f'📢 <b>Mystery Whisper</b> from <a href="tg://user?id={sender_id}">{esc(sender_name)}</a> for <b>Everyone</b>!\n'
+            f'<i>🌍 Niche button par tap karke message dekhein:</i>',
+            parse_mode='HTML'
+        ),
+        reply_markup=kb3
+    ))
+
+    try:
+        bot.answer_inline_query(iq.id, results, cache_time=1, is_personal=True)
+    except Exception:
+        log.exception('Inline whisper error')
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('wh:'))
 def whisper_callback(call):
     wid = call.data.split(':', 1)[1]
     with DB_LOCK, connect() as c:
         row = c.execute('SELECT * FROM whispers WHERE whisper_id=?', (wid,)).fetchone()
-    if not row:
-        return bot.answer_callback_query(call.id, '⚠️ Yeh whisper expire ho chuka hai.', show_alert=True)
+        if not row:
+            return bot.answer_callback_query(call.id, '⚠️ Yeh whisper expire ho chuka hai.', show_alert=True)
 
+        uid = call.from_user.id
+        uname = (call.from_user.username or '').lower()
+        raw_tkey = row['target_key'] or ''
+        mode, _, tval = raw_tkey.partition(':')
+
+        if mode not in ('target', 'first', 'all'):
+            mode = 'target'
+            tval = raw_tkey
+
+        if mode == 'all':
+            return bot.answer_callback_query(call.id, f"🤫 {row['secret_text']}", show_alert=True)
+
+        if mode == 'first':
+            if uid == row['sender_id']:
+                return bot.answer_callback_query(call.id, f"🤫 (Your Whisper): {row['secret_text']}", show_alert=True)
+            if not tval:
+                c.execute('UPDATE whispers SET target_key=? WHERE whisper_id=?', (f'first:{uid}', wid))
+                return bot.answer_callback_query(call.id, f"🎉 You are 1st! Whisper:\n{row['secret_text']}", show_alert=True)
+            elif tval == str(uid):
+                return bot.answer_callback_query(call.id, f"🤫 {row['secret_text']}", show_alert=True)
+            else:
+                return bot.answer_callback_query(call.id, '⛔ Kisi aur ne pehle hi yeh whisper dekh liya hai!', show_alert=True)
+
+        allowed = (uid == row['sender_id'])
+        if tval.startswith('id:') and str(uid) == tval[3:]:
+            allowed = True
+        elif tval.startswith('user:') and uname and uname == tval[5:]:
+            allowed = True
+
+        if not allowed:
+            return bot.answer_callback_query(call.id, '⛔ Yeh secret whisper aapke liye nahi hai!', show_alert=True)
+        bot.answer_callback_query(call.id, f"🤫 {row['secret_text']}", show_alert=True)
+
+# ---------------- TIC-TAC-TOE GAME (❌⭕) ----------------
+TTT_GAMES = {}
+TTT_LOCK = threading.Lock()
+WIN_LINES = [
+    (0, 1, 2), (3, 4, 5), (6, 7, 8),
+    (0, 3, 6), (1, 4, 7), (2, 5, 8),
+    (0, 4, 8), (2, 4, 6)
+]
+
+def ttt_check_winner(board):
+    for a, b, c in WIN_LINES:
+        if board[a] != ' ' and board[a] == board[b] == board[c]:
+            return board[a]
+    if ' ' not in board:
+        return 'DRAW'
+    return None
+
+def ttt_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    board = game['board']
+    btns = []
+    for i in range(9):
+        sym = '❌' if board[i] == 'X' else ('⭕' if board[i] == 'O' else '⬜')
+        btns.append(types.InlineKeyboardButton(sym, callback_data=f'ttt:{gid}:{i}'))
+    kb.row(btns[0], btns[1], btns[2])
+    kb.row(btns[3], btns[4], btns[5])
+    kb.row(btns[6], btns[7], btns[8])
+    if game['o_id'] is None and not game['over']:
+        kb.add(types.InlineKeyboardButton('🎮 Join as ⭕ (Player 2)', callback_data=f'ttt:{gid}:join'))
+    return kb
+
+def ttt_status_text(game):
+    p1 = f"<a href=\"tg://user?id={game['x_id']}\">{esc(game['x_name'])}</a>"
+    p2 = f"<a href=\"tg://user?id={game['o_id']}\">{esc(game['o_name'])}</a>" if game['o_id'] else "<i>Waiting for Player 2...</i>"
+    header = f"🎮 <b>TIC-TAC-TOE (❌ vs ⭕)</b>\n❌ Player 1: {p1}\n⭕ Player 2: {p2}\n\n"
+    if game['winner'] == 'X':
+        return header + f"🏆 <b>Winner:</b> {p1} (❌) — <b>+30 Coins!</b> 🎉"
+    elif game['winner'] == 'O':
+        return header + f"🏆 <b>Winner:</b> {p2} (⭕) — <b>+30 Coins!</b> 🎉"
+    elif game['winner'] == 'DRAW':
+        return header + "🤝 <b>Match Draw!</b> Koi nahi jeeta."
+    turn_mention = p1 if game['turn'] == 'X' else p2
+    turn_sym = '❌' if game['turn'] == 'X' else '⭕'
+    return header + f"👉 <b>Turn:</b> {turn_mention} ({turn_sym})"
+
+@bot.message_handler(commands=['ttt', 'tictactoe'])
+def start_ttt(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /ttt in a group to play with friends!')
+    gid = uuid.uuid4().hex[:8]
+    o_id, o_name = None, None
+    if m.reply_to_message and m.reply_to_message.from_user and not m.reply_to_message.from_user.is_bot:
+        if m.reply_to_message.from_user.id != m.from_user.id:
+            o_id = m.reply_to_message.from_user.id
+            o_name = user_name(m.reply_to_message.from_user)
+
+    game = {
+        'chat_id': m.chat.id,
+        'x_id': m.from_user.id,
+        'x_name': user_name(m.from_user),
+        'o_id': o_id,
+        'o_name': o_name,
+        'board': [' '] * 9,
+        'turn': 'X',
+        'over': False,
+        'winner': None,
+        'ts': time.time()
+    }
+    with TTT_LOCK:
+        now = time.time()
+        for k in list(TTT_GAMES.keys()):
+            if now - TTT_GAMES[k]['ts'] > 3600:
+                TTT_GAMES.pop(k, None)
+        TTT_GAMES[gid] = game
+
+    bot.send_message(m.chat.id, ttt_status_text(game), reply_markup=ttt_keyboard(gid, game))
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('ttt:'))
+def ttt_callback(call):
+    parts = call.data.split(':')
+    if len(parts) != 3:
+        return
+    _, gid, action = parts
     uid = call.from_user.id
-    uname = (call.from_user.username or '').lower()
-    tkey = row['target_key']
-    allowed = (uid == row['sender_id'])
-    if tkey.startswith('id:') and str(uid) == tkey[3:]:
-        allowed = True
-    elif tkey.startswith('user:') and uname and uname == tkey[5:]:
-        allowed = True
+    uname = user_name(call.from_user)
 
-    if not allowed:
-        return bot.answer_callback_query(call.id, '⛔ Yeh secret whisper aapke liye nahi hai!', show_alert=True)
-    bot.answer_callback_query(call.id, f"🤫 {row['secret_text']}", show_alert=True)
+    with TTT_LOCK:
+        game = TTT_GAMES.get(gid)
+        if not game:
+            return bot.answer_callback_query(call.id, '⚠️ Yeh game expire ho chuka hai. /ttt se naya start karein.', show_alert=True)
+        if game['over']:
+            return bot.answer_callback_query(call.id, '🏁 Yeh game khatam ho chuka hai!')
+
+        if action == 'join':
+            if uid == game['x_id']:
+                return bot.answer_callback_query(call.id, 'Aap pehle se ❌ Player 1 hain!', show_alert=True)
+            if game['o_id'] is not None:
+                return bot.answer_callback_query(call.id, 'Player 2 pehle hi join ho chuka hai!', show_alert=True)
+            game['o_id'] = uid
+            game['o_name'] = uname
+            game['ts'] = time.time()
+            bot.answer_callback_query(call.id, '✅ Aap ⭕ Player 2 ban gaye!')
+            try:
+                bot.edit_message_text(ttt_status_text(game), call.message.chat.id, call.message.message_id, reply_markup=ttt_keyboard(gid, game))
+            except Exception:
+                pass
+            return
+
+        if game['o_id'] is None and uid != game['x_id'] and game['turn'] == 'O':
+            game['o_id'] = uid
+            game['o_name'] = uname
+
+        if game['turn'] == 'X' and uid != game['x_id']:
+            return bot.answer_callback_query(call.id, '⛔ Abhi ❌ Player 1 ki baari hai!', show_alert=True)
+        if game['turn'] == 'O':
+            if game['o_id'] is None:
+                return bot.answer_callback_query(call.id, 'Pehle kisi ko Player 2 join karne dein!', show_alert=True)
+            if uid != game['o_id']:
+                return bot.answer_callback_query(call.id, '⛔ Abhi ⭕ Player 2 ki baari hai!', show_alert=True)
+
+        idx = int(action)
+        if game['board'][idx] != ' ':
+            return bot.answer_callback_query(call.id, '⚠️ Yeh box pehle se bhara hua hai!')
+
+        game['board'][idx] = game['turn']
+        game['ts'] = time.time()
+        res = ttt_check_winner(game['board'])
+        if res:
+            game['over'] = True
+            game['winner'] = res
+            if res in ('X', 'O'):
+                win_uid = game['x_id'] if res == 'X' else game['o_id']
+                with DB_LOCK, connect() as c:
+                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (win_uid, ''))
+                    c.execute('UPDATE wallet SET coins=coins+30 WHERE user_id=?', (win_uid,))
+        else:
+            game['turn'] = 'O' if game['turn'] == 'X' else 'X'
+
+        new_text = ttt_status_text(game)
+        new_kb = ttt_keyboard(gid, game)
+
+    bot.answer_callback_query(call.id)
+    try:
+        bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id, reply_markup=new_kb)
+    except Exception:
+        pass
 
 # ---------------- STYLISH TEXT GENERATOR ----------------
 ASCII_NORMAL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"

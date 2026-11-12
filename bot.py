@@ -63,6 +63,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS wallet(user_id INTEGER PRIMARY KEY,coins INTEGER NOT NULL DEFAULT 0,last_daily TEXT DEFAULT '');
         CREATE TABLE IF NOT EXISTS global_users(user_id INTEGER PRIMARY KEY,name TEXT,username TEXT,first_name TEXT,last_name TEXT,last_seen REAL,last_chat INTEGER);
         CREATE TABLE IF NOT EXISTS xp_stats(chat_id INTEGER,user_id INTEGER,xp INTEGER NOT NULL DEFAULT 0,last_award REAL NOT NULL DEFAULT 0,PRIMARY KEY(chat_id,user_id));
+        CREATE TABLE IF NOT EXISTS chatbot_memory(id INTEGER PRIMARY KEY AUTOINCREMENT,trigger_text TEXT,reply_type TEXT,reply_content TEXT);
+        CREATE INDEX IF NOT EXISTS idx_chatbot_trigger ON chatbot_memory(trigger_text);
+        CREATE TABLE IF NOT EXISTS whispers(whisper_id TEXT PRIMARY KEY,sender_id INTEGER,sender_name TEXT,target_key TEXT,secret_text TEXT,created_at REAL);
         ''')
         # Migrate previously saved group AFK statuses and member records.
         c.execute('''INSERT INTO global_afk(user_id,reason,since)
@@ -273,8 +276,18 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /kang — static sticker to photo; animated/video behavior retained
 @admin [reason] / @all [message] (admin only for @all)
 
+<b>New Features & Games</b>
+/chatbot on|off — smart auto-reply (text, sticker & GIF) when called
+/whisper @user secret — private secret whisper button in group
+/style TEXT — convert text into 10+ stylish fancy fonts
+/cricket /guess — guess cricketer game (auto-asks every 1 hr & awards coins)
+
 <b>Optional AI</b>
-/ai question — needs GROQ_API_KEY'''
+/ai question — needs GROQ_API_KEY
+
+━━━━━━━━━━━━━━━━━━━━
+👑 <b>Bot Owner:</b> Shivam Mishra
+📢 <b>Join our channel:</b> @dreamers_adda'''
 
 @bot.message_handler(commands=['start', 'help', 'panel'])
 def help_cmd(m): bot.send_message(m.chat.id, HELP)
@@ -642,124 +655,121 @@ def remove_filter(m):
         cur = c.execute('DELETE FROM filters WHERE chat_id=? AND keyword=?', (m.chat.id, key))
     bot.reply_to(m, '✅ Filter removed.' if cur.rowcount else 'Filter not found.')
 
-# ---------------- COMPLETE LOCK / UNLOCK ----------------
-PERMISSION_FIELDS = ('can_send_messages','can_send_audios','can_send_documents','can_send_photos','can_send_videos','can_send_video_notes','can_send_voice_notes','can_send_polls','can_send_other_messages','can_add_web_page_previews','can_invite_users','can_pin_messages','can_change_info','can_manage_topics')
+# ---------------- COMPLETE LOCK / UNLOCK (ROSE-BOT AUTO-DELETE STYLE) ----------------
+LOCK_TYPES = {'all','media','sticker','photo','video','gif','document','audio','voice','poll','link','forward'}
 
-def permissions_dict(perms):
-    return {k: getattr(perms, k, None) for k in PERMISSION_FIELDS if getattr(perms, k, None) is not None}
-
-def get_base_permissions(chat):
-    raw = setting(chat, 'base_permissions', '')
+def get_chat_locks(chat):
+    raw = setting(chat, 'chat_locks', '')
     if raw:
-        try: return json.loads(raw)
-        except Exception: pass
-    current = permissions_dict(bot.get_chat(chat).permissions)
-    if current:
-        set_setting(chat, 'base_permissions', json.dumps(current))
-        return current
-    return {k: True for k in PERMISSION_FIELDS}
+        try:
+            return set(json.loads(raw))
+        except Exception:
+            pass
+    return set()
 
-def apply_lock(m, cmd, mode):
-    chat = m.chat.id
-    current = bot.get_chat(chat).permissions
-    # Store base permissions before making locks so unlocks respect original configuration
-    if not setting(chat, 'base_permissions', ''):
-        set_setting(chat, 'base_permissions', json.dumps(permissions_dict(current)))
-    base = permissions_dict(current) or {k: True for k in PERMISSION_FIELDS}
-    if mode == 'all':
-        for k in PERMISSION_FIELDS:
-            if k in base: base[k] = False
-        if 'can_send_messages' in base: base['can_send_messages'] = False
-    elif mode == 'media':
-        for k in ('can_send_photos','can_send_videos','can_send_documents','can_send_audios','can_send_voice_notes','can_send_video_notes','can_send_other_messages'):
-            if k in base: base[k] = False
-    elif mode in ('sticker','gif'):
-        base['can_send_other_messages'] = False
-        if mode == 'gif': base['can_send_videos'] = False
-    elif mode == 'photo': base['can_send_photos'] = False
-    elif mode == 'video': base['can_send_videos'] = False
-    elif mode == 'document': base['can_send_documents'] = False
-    elif mode == 'audio': base['can_send_audios'] = False
-    elif mode == 'voice': base['can_send_voice_notes'] = False
-    elif mode == 'poll': base['can_send_polls'] = False
-    elif mode == 'webpreview': base['can_add_web_page_previews'] = False
-    else: raise ValueError('Unknown lock type')
-    bot.set_chat_permissions(chat, types.ChatPermissions(**base))
-
-def apply_unlock(m, mode):
-    chat = m.chat.id
-    baseline = get_base_permissions(chat)
-    if mode == 'all':
-        bot.set_chat_permissions(chat, types.ChatPermissions(**baseline))
-        return
-    current = permissions_dict(bot.get_chat(chat).permissions) or dict(baseline)
-    # Restore only if allowed in the chat's original baseline permissions
-    def restore(k):
-        if baseline.get(k, True):
-            current[k] = True
-    if mode == 'media':
-        for k in ('can_send_photos','can_send_videos','can_send_documents','can_send_audios','can_send_voice_notes','can_send_video_notes','can_send_other_messages'):
-            restore(k)
-    elif mode in ('sticker','gif'):
-        restore('can_send_other_messages')
-        if mode == 'gif': restore('can_send_videos')
-    elif mode == 'photo': restore('can_send_photos')
-    elif mode == 'video': restore('can_send_videos')
-    elif mode == 'document': restore('can_send_documents')
-    elif mode == 'audio': restore('can_send_audios')
-    elif mode == 'voice': restore('can_send_voice_notes')
-    elif mode == 'poll': restore('can_send_polls')
-    elif mode == 'webpreview': restore('can_add_web_page_previews')
-    else: raise ValueError('Unknown unlock type')
-    bot.set_chat_permissions(chat, types.ChatPermissions(**current))
+def set_chat_locks(chat, locks_set):
+    set_setting(chat, 'chat_locks', json.dumps(sorted(list(locks_set))))
 
 def is_lock_approved(chat, uid):
     with DB_LOCK, connect() as c:
-        return c.execute('SELECT 1 FROM lock_approved WHERE chat_id=? AND user_id=?', (chat,uid)).fetchone() is not None
+        return c.execute('SELECT 1 FROM lock_approved WHERE chat_id=? AND user_id=?', (chat, uid)).fetchone() is not None
+
+def check_and_enforce_lock(m):
+    chat = m.chat.id
+    uid = m.from_user.id
+    if admin(chat, uid) or is_lock_approved(chat, uid):
+        return False
+    locks = get_chat_locks(chat)
+    if not locks:
+        return False
+
+    should_delete = False
+    if 'all' in locks:
+        should_delete = True
+    else:
+        ct = m.content_type
+        if 'media' in locks and ct in ('photo', 'video', 'animation', 'sticker', 'document', 'audio', 'voice', 'video_note'):
+            should_delete = True
+        elif 'sticker' in locks and ct == 'sticker':
+            should_delete = True
+        elif 'photo' in locks and ct == 'photo':
+            should_delete = True
+        elif 'video' in locks and ct in ('video', 'video_note'):
+            should_delete = True
+        elif 'gif' in locks and ct == 'animation':
+            should_delete = True
+        elif 'document' in locks and ct == 'document':
+            should_delete = True
+        elif 'audio' in locks and ct == 'audio':
+            should_delete = True
+        elif 'voice' in locks and ct in ('voice', 'video_note'):
+            should_delete = True
+        elif 'poll' in locks and ct == 'poll':
+            should_delete = True
+        elif 'forward' in locks and (getattr(m, 'forward_date', None) or getattr(m, 'forward_origin', None)):
+            should_delete = True
+        elif 'link' in locks:
+            txt = (m.text or m.caption or '')
+            has_url_entity = any(e.type in ('url', 'text_link') for e in (m.entities or m.caption_entities or []))
+            if has_url_entity or URL_RE.search(txt):
+                should_delete = True
+
+    if should_delete:
+        try:
+            bot.delete_message(chat, m.message_id)
+        except Exception:
+            pass
+        return True
+    return False
 
 @bot.message_handler(commands=['approve','unapprove','approved'])
 def lock_approval(m):
     if not need_admin(m): return
-    cmd=(m.text or '').split()[0].split('@')[0][1:].lower()
-    target=target_id(m)
+    cmd = (m.text or '').split()[0].split('@')[0][1:].lower()
+    target = target_id(m)
     if cmd == 'approved':
         with DB_LOCK, connect() as c:
-            rows=c.execute('SELECT user_id FROM lock_approved WHERE chat_id=? ORDER BY created_at', (m.chat.id,)).fetchall()
-        if not rows: return bot.reply_to(m,'No approved members yet.')
-        return bot.reply_to(m,'✅ Approved members:\n'+ '\n'.join(f'<a href="tg://user?id={r["user_id"]}"><code>{r["user_id"]}</code></a>' for r in rows))
-    if not target: return bot.reply_to(m, f'Reply to a user with /{cmd}.')
+            rows = c.execute('SELECT user_id FROM lock_approved WHERE chat_id=? ORDER BY created_at', (m.chat.id,)).fetchall()
+        if not rows:
+            return bot.reply_to(m, 'No approved members yet.')
+        return bot.reply_to(m, '✅ <b>Approved members (Lock Bypass):</b>\n' + '\n'.join(f'• <a href="tg://user?id={r["user_id"]}"><code>{r["user_id"]}</code></a>' for r in rows))
+    if not target:
+        return bot.reply_to(m, f'Reply to a user or pass @username / ID with /{cmd}.')
     if cmd == 'approve':
         with DB_LOCK, connect() as c:
-            c.execute('INSERT OR REPLACE INTO lock_approved VALUES(?,?,?,?)',(m.chat.id,target,m.from_user.id,time.time()))
-        try:
-            bot.restrict_chat_member(m.chat.id,target,permissions=types.ChatPermissions(can_send_messages=True,can_send_audios=True,can_send_documents=True,can_send_photos=True,can_send_videos=True,can_send_video_notes=True,can_send_voice_notes=True,can_send_polls=True,can_send_other_messages=True,can_add_web_page_previews=True))
-        except Exception:
-            log.exception('Could not lift restrictions for approved user')
-        return bot.reply_to(m, f'✅ <code>{target}</code> approved in the bot whitelist. Note: Telegram group-wide /lock permissions may still apply to everyone; approval cannot override a group-wide restriction.')
+            c.execute('INSERT OR REPLACE INTO lock_approved VALUES(?,?,?,?)', (m.chat.id, target, m.from_user.id, time.time()))
+        return bot.reply_to(m, f'✅ User <code>{target}</code> approved! Inke messages group locks hone par bhi delete nahi honge.')
     with DB_LOCK, connect() as c:
-        c.execute('DELETE FROM lock_approved WHERE chat_id=? AND user_id=?',(m.chat.id,target))
-    try:
-        defaults=bot.get_chat(m.chat.id).permissions
-        bot.restrict_chat_member(m.chat.id,target,permissions=defaults or types.ChatPermissions(can_send_messages=False))
-    except Exception:
-        log.exception('Could not reapply group default permissions after unapprove')
-    return bot.reply_to(m, f'❎ Removed approval for <code>{target}</code>. Group default permissions have been reapplied where Telegram allows.')
+        c.execute('DELETE FROM lock_approved WHERE chat_id=? AND user_id=?', (m.chat.id, target))
+    return bot.reply_to(m, f'❎ Removed lock approval for <code>{target}</code>.')
 
-@bot.message_handler(commands=['lock', 'unlock'])
+@bot.message_handler(commands=['lock', 'unlock', 'locks'])
 def lock(m):
     if not need_admin(m): return
     parts = (m.text or '').split()
     cmd = parts[0].split('@')[0][1:].lower()
+    if cmd == 'locks':
+        locks = get_chat_locks(m.chat.id)
+        if not locks:
+            return bot.reply_to(m, '🔓 No active locks in this group.')
+        return bot.reply_to(m, '🔒 <b>Active Locks (Auto-Delete):</b>\n' + ', '.join(f'<code>{esc(x)}</code>' for x in sorted(locks)))
+
     mode = parts[1].lower() if len(parts) > 1 else 'all'
-    allowed = {'all','media','sticker','photo','video','gif','document','audio','voice','poll','webpreview'}
-    if mode not in allowed: return bot.reply_to(m, 'Types: all, media, sticker, photo, video, gif, document, audio, voice, poll, webpreview')
-    try:
-        if cmd == 'lock': apply_lock(m, cmd, mode)
-        else: apply_unlock(m, mode)
-        done(m, f'{"🔒 Locked" if cmd=="lock" else "🔓 Unlocked"}: <b>{esc(mode)}</b>.')
-    except Exception as e:
-        log.exception('Lock update failed')
-        bot.reply_to(m, 'Permission update failed. Check that the bot is an admin with permission to restrict members. ' + esc(e))
+    if mode not in LOCK_TYPES:
+        return bot.reply_to(m, 'Available lock types: <code>all, media, sticker, photo, video, gif, document, audio, voice, poll, link, forward</code>')
+
+    locks = get_chat_locks(m.chat.id)
+    if cmd == 'lock':
+        locks.add(mode)
+        set_chat_locks(m.chat.id, locks)
+        done(m, f'🔒 Locked <b>{esc(mode)}</b>! Non-approved members ke {esc(mode)} messages turant delete honge.')
+    else:
+        if mode == 'all':
+            locks.clear()
+        else:
+            locks.discard(mode)
+        set_chat_locks(m.chat.id, locks)
+        done(m, f'🔓 Unlocked <b>{esc(mode)}</b>.')
 
 # ---------------- DELETE / PURGE ----------------
 def safe_delete(chat, mid):
@@ -1173,6 +1183,20 @@ def get_dl_url(token):
 INSTA_VIDEO_RE = re.compile(r'https?://(?:www\.|m\.)?instagram\.com/(?:reel|tv|p)/[A-Za-z0-9_-]+(?:/)?(?:\?[^\s]*)?', re.I)
 PINTEREST_VIDEO_RE = re.compile(r'https?://(?:(?:www|[a-z]{2})\.)?(?:pinterest\.com/pin/|pin\.it/)[A-Za-z0-9_/-]+(?:\?[^\s]*)?', re.I)
 
+def make_cookie_header(cookie_text):
+    if not cookie_text:
+        return ''
+    cookies = []
+    for line in cookie_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) >= 7:
+            cookies.append(f"{parts[5]}={parts[6]}")
+        elif '=' in line and len(parts) == 1:
+            cookies.append(line)
+    return "; ".join(cookies)
 
 def get_pinterest_video_stream(url):
     import urllib.request, re
@@ -1188,6 +1212,67 @@ def get_pinterest_video_stream(url):
         log.warning("Pinterest direct extraction failed: %s", e)
     return None
 
+def get_instagram_video_stream(url):
+    import urllib.request
+    m = re.search(r'instagram\.com/(?:reel|p|tv)/([^/?#&]+)', url)
+    if not m:
+        return None
+    shortcode = m.group(1)
+
+    # 1. Cookie-authenticated fetch (if user provided INSTAGRAM_COOKIES)
+    cookie_str = make_cookie_header(COOKIES_DATA)
+    if cookie_str:
+        try:
+            req = urllib.request.Request(f'https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis', headers={
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+                'Cookie': cookie_str,
+                'X-IG-App-ID': '936619743392459',
+                'Accept': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                items = data.get('items', [])
+                if items and items[0].get('video_versions'):
+                    return items[0]['video_versions'][0]['url']
+                media = data.get('graphql', {}).get('shortcode_media', {})
+                if media and media.get('is_video') and media.get('video_url'):
+                    return media['video_url']
+        except Exception as e:
+            log.warning("Instagram cookie API fetch failed: %s", e)
+
+    # 2. Mirror fallback (bypasses datacenter IP rate limits when cookies aren't set)
+    mirrors = [
+        f'https://kkinstagram.com/reel/{shortcode}/',
+        f'https://ddinstagram.com/reel/{shortcode}/',
+        f'https://instagramez.com/reel/{shortcode}/',
+        f'https://kkinstagram.com/p/{shortcode}/',
+        f'https://ddinstagram.com/p/{shortcode}/'
+    ]
+    headers_bot = {
+        'User-Agent': 'TelegramBot (like TwitterBot)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+    for m_url in mirrors:
+        try:
+            req = urllib.request.Request(m_url, headers=headers_bot)
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                ct = resp.headers.get('Content-Type', '').lower()
+                if 'video' in ct or 'mp4' in ct or resp.geturl().endswith('.mp4'):
+                    return resp.geturl()
+                html = resp.read().decode('utf-8', errors='ignore')
+                v_match = re.search(r'<meta\s+(?:property|name)="og:video(?::secure_url)?"\s+content="([^"]+)"', html, re.I) or \
+                          re.search(r'<meta\s+content="([^"]+)"\s+(?:property|name)="og:video(?::secure_url)?"', html, re.I) or \
+                          re.search(r'<meta\s+name="twitter:player:stream"\s+content="([^"]+)"', html, re.I) or \
+                          re.search(r'src="(https?://[^"]+\.mp4[^"]*)"', html, re.I)
+                if v_match:
+                    v_url = v_match.group(1).replace('&amp;', '&').replace('\\u0026', '&')
+                    if v_url.startswith('http'):
+                        return v_url
+        except Exception:
+            continue
+
+    return None
+
 def send_download_button(chat_id, message_id, url, platform):
     token = store_dl_url(url, platform)
     title = 'Instagram Reel' if platform == 'instagram' else 'Pinterest Video'
@@ -1196,11 +1281,10 @@ def send_download_button(chat_id, message_id, url, platform):
     bot.send_message(chat_id, f'🎬 <b>{title} link mil gaya!</b>\nDownload ke liye button dabayein:',
                      reply_to_message_id=message_id, reply_markup=kb)
 
-
 def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
     temp_dir = None
     try:
-        # Fast direct stream for Pinterest if og:video is present
+        # 1. Fast direct stream for Pinterest
         if platform == 'pinterest':
             p_stream = get_pinterest_video_stream(url)
             if p_stream:
@@ -1214,6 +1298,21 @@ def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
                 except Exception: pass
                 return
 
+        # 2. Fast direct stream for Instagram (Cookies first, then Mirrors)
+        if platform == 'instagram':
+            ig_stream = get_instagram_video_stream(url)
+            if ig_stream:
+                import urllib.request
+                req = urllib.request.Request(ig_stream, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    buf = io.BytesIO(resp.read(48 * 1024 * 1024))
+                buf.name = 'instagram_video.mp4'
+                bot.send_video(chat_id, buf, caption='📥 <b>Instagram Reel</b>', reply_to_message_id=reply_to_mid, timeout=120)
+                try: bot.delete_message(chat_id, status_mid)
+                except Exception: pass
+                return
+
+        # 3. yt-dlp Extractor Fallback
         import yt_dlp
         temp_dir = tempfile.mkdtemp(prefix='mishra_dl_')
         opts = {
@@ -1227,11 +1326,28 @@ def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
             'no_warnings': True,
             'restrictfilenames': True,
         }
-        if platform == 'instagram' and COOKIE_FILE_PATH and os.path.isfile(COOKIE_FILE_PATH):
-            opts['cookiefile'] = COOKIE_FILE_PATH
 
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        target_url = url
+        if platform == 'instagram':
+            if COOKIE_FILE_PATH and os.path.isfile(COOKIE_FILE_PATH):
+                opts['cookiefile'] = COOKIE_FILE_PATH
+            else:
+                # Route through mirror if no cookies are configured so Render IP isn't 429 blocked
+                target_url = re.sub(r'https?://(?:www\.|m\.)?instagram\.com', 'https://kkinstagram.com', url, flags=re.I)
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(target_url, download=True)
+        except Exception as first_err:
+            # If authenticated yt-dlp failed, retry via mirror without cookies
+            if platform == 'instagram' and 'cookiefile' in opts:
+                opts.pop('cookiefile', None)
+                mirror_url = re.sub(r'https?://(?:www\.|m\.)?instagram\.com', 'https://kkinstagram.com', url, flags=re.I)
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(mirror_url, download=True)
+            else:
+                raise first_err
+
         files = [os.path.join(temp_dir, name) for name in os.listdir(temp_dir)
                  if os.path.isfile(os.path.join(temp_dir, name)) and not name.endswith(('.part', '.ytdl'))]
         if not files:
@@ -1259,7 +1375,7 @@ def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
         detail = str(e)
         low = detail.lower()
         if '429' in low or 'too many requests' in low:
-            detail = 'Platform ne requests limit kar di hain (HTTP 429). Kuch der baad dobara try karein.'
+            detail = 'Platform ne requests limit kar di hain (HTTP 429). Render mein INSTAGRAM_COOKIES set karein ya kuch der baad try karein.'
         elif 'unable to download webpage' in low or 'name or service not known' in low or 'temporary failure in name resolution' in low:
             detail = 'Website/DNS abhi reachable nahi hai. Kuch der baad dobara try karein.'
         elif 'login' in low or 'private' in low or 'cookies' in low:
@@ -1267,7 +1383,7 @@ def download_video_thread(chat_id, status_mid, reply_to_mid, url, platform):
         elif 'yt_dlp' in low or 'no module named' in low:
             detail = 'Downloader dependency missing hai. requirements.txt mein yt-dlp install hona chahiye.'
         elif 'requested format is not available' in low:
-            detail = 'Pinterest ne is pin ke liye downloadable format expose nahi kiya. Agar phir bhi error aaye to pin public nahi hai.'
+            detail = 'Is link ke liye downloadable video format nahi mila. Link public hona chahiye.'
         err = f'❌ <b>Download Error:</b>\n{esc(detail)[:350]}'
         try:
             bot.edit_message_text(err, chat_id, status_mid)
@@ -1319,13 +1435,311 @@ def pm_auto_download(m):
     elif pin:
         send_download_button(m.chat.id, m.message_id, pin.group(0).rstrip('.,!?)'), 'pinterest')
 
+# ---------------- SMART CHATBOT (TEXT, STICKER & GIF) ----------------
+BOT_NAME_RE = re.compile(r'\b(mishra\s*robot|mishra\s*bot|mishra|robot)\b', re.I)
+
+DEFAULT_CHATBOT_REPLIES = [
+    "Haan ji, bolo! Mishra Robot hazir hai 😎",
+    "Kya haal hai? Kaise madad kar sakta hoon? ✨",
+    "Bolo bolo, main sun raha hoon 👀",
+    "Ji hukum! Mishra Robot aapki seva mein hai 🤖",
+    "Aaj group mein bada sannata hai, kuch masti karte hain! 🎉",
+    "Main hamesha active hoon! Batao kya kaam hai? ⚡",
+    "Arre waah, yaad kiya mujhe? Batao kya baat hai 😄",
+    "Shant raho warna mute kar dunga 😜 Mazak kar raha hoon, bolo!",
+]
+
+def learn_chatbot_data(m):
+    if not m.reply_to_message:
+        return
+    orig_txt = (m.reply_to_message.text or m.reply_to_message.caption or '').strip().lower()
+    if not orig_txt or orig_txt.startswith('/') or len(orig_txt) > 80:
+        return
+    r_type, r_content = None, None
+    if m.text and not m.text.startswith('/') and len(m.text.strip()) <= 200:
+        r_type, r_content = 'text', m.text.strip()
+    elif m.sticker:
+        r_type, r_content = 'sticker', m.sticker.file_id
+    elif m.animation:
+        r_type, r_content = 'animation', m.animation.file_id
+    if r_type and r_content:
+        with DB_LOCK, connect() as c:
+            c.execute('INSERT INTO chatbot_memory(trigger_text,reply_type,reply_content) VALUES(?,?,?)',
+                      (orig_txt, r_type, r_content))
+            c.execute('DELETE FROM chatbot_memory WHERE id NOT IN (SELECT id FROM chatbot_memory ORDER BY id DESC LIMIT 3000)')
+
+def get_chatbot_response(query_text):
+    clean = re.sub(r'\s+', ' ', query_text.lower()).strip()
+    with DB_LOCK, connect() as c:
+        rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text=? ORDER BY RANDOM() LIMIT 1', (clean,)).fetchall()
+        if not rows and len(clean) >= 4:
+            stripped = BOT_NAME_RE.sub('', clean).strip(' ,.!?')
+            if stripped:
+                rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text LIKE ? ORDER BY RANDOM() LIMIT 1', (f'%{stripped}%',)).fetchall()
+        if not rows:
+            if random.random() < 0.35:
+                rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory ORDER BY RANDOM() LIMIT 1').fetchall()
+    if rows:
+        return rows[0]['reply_type'], rows[0]['reply_content']
+    return 'text', random.choice(DEFAULT_CHATBOT_REPLIES)
+
+def send_chatbot_reply(m, query_text):
+    r_type, r_content = get_chatbot_response(query_text)
+    try:
+        if r_type == 'sticker':
+            bot.send_sticker(m.chat.id, r_content, reply_to_message_id=m.message_id)
+        elif r_type == 'animation':
+            bot.send_animation(m.chat.id, r_content, reply_to_message_id=m.message_id)
+        else:
+            bot.reply_to(m, esc(r_content))
+    except Exception:
+        bot.reply_to(m, random.choice(DEFAULT_CHATBOT_REPLIES))
+
+@bot.message_handler(commands=['chatbot'])
+def chatbot_toggle(m):
+    if not need_admin(m): return
+    p = (m.text or '').split()
+    if len(p) < 2 or p[1].lower() not in ('on', 'off'):
+        cur = setting(m.chat.id, 'chatbot', 'on')
+        return bot.reply_to(m, f'🤖 Chatbot is currently <b>{cur.upper()}</b>.\nUsage: <code>/chatbot on</code> or <code>/chatbot off</code>')
+    set_setting(m.chat.id, 'chatbot', p[1].lower())
+    bot.reply_to(m, f'🤖 Chatbot <b>{"enabled" if p[1].lower()=="on" else "disabled"}</b>.')
+
+# ---------------- SECRET WHISPER SYSTEM ----------------
+@bot.message_handler(commands=['whisper'])
+def whisper_cmd(m):
+    raw = (m.text or '').split(maxsplit=1)
+    target_key = ''
+    target_label = ''
+    secret = ''
+
+    if m.reply_to_message and m.reply_to_message.from_user:
+        tu = m.reply_to_message.from_user
+        if tu.is_bot:
+            return bot.reply_to(m, '⛔ Bot ko whisper nahi bhej sakte.')
+        target_key = f'id:{tu.id}'
+        target_label = user_name(tu)
+        if len(raw) < 2 or not raw[1].strip():
+            return bot.reply_to(m, 'Usage: Reply to a user with <code>/whisper your secret message</code>')
+        secret = raw[1].strip()
+    else:
+        if len(raw) < 2:
+            return bot.reply_to(m, 'Usage:\n• Reply to user: <code>/whisper secret message</code>\n• Or tag user: <code>/whisper @username secret message</code>')
+        parts = raw[1].strip().split(maxsplit=1)
+        if len(parts) < 2:
+            return bot.reply_to(m, 'Please include both @username and your secret message.')
+        tok = parts[0].strip()
+        secret = parts[1].strip()
+        if tok.isdigit():
+            target_key = f'id:{tok}'
+            target_label = tok
+        elif tok.startswith('@'):
+            target_key = f'user:{tok.lstrip("@").lower()}'
+            target_label = tok
+        else:
+            return bot.reply_to(m, 'Reply to a user or specify a valid @username.')
+
+    if len(secret) > 190:
+        return bot.reply_to(m, '⚠️ Whisper message 190 characters se chhota rakhein (Telegram alert limit).')
+
+    wid = uuid.uuid4().hex[:10]
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT INTO whispers VALUES(?,?,?,?,?,?)',
+                  (wid, m.from_user.id, user_name(m.from_user), target_key, secret, time.time()))
+        c.execute('DELETE FROM whispers WHERE created_at < ?', (time.time() - 7*86400,))
+
+    if group(m):
+        safe_delete(m.chat.id, m.message_id)
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton('🔐 Show Whisper', callback_data=f'wh:{wid}'))
+    bot.send_message(
+        m.chat.id,
+        f'🤫 <b>Secret Whisper</b> from <a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a> to <b>{esc(target_label)}</b>!\n<i>Sirf wahi dekh sakte hain jinke liye yeh bheja gaya hai.</i>',
+        reply_markup=kb
+    )
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('wh:'))
+def whisper_callback(call):
+    wid = call.data.split(':', 1)[1]
+    with DB_LOCK, connect() as c:
+        row = c.execute('SELECT * FROM whispers WHERE whisper_id=?', (wid,)).fetchone()
+    if not row:
+        return bot.answer_callback_query(call.id, '⚠️ Yeh whisper expire ho chuka hai.', show_alert=True)
+
+    uid = call.from_user.id
+    uname = (call.from_user.username or '').lower()
+    tkey = row['target_key']
+    allowed = (uid == row['sender_id'])
+    if tkey.startswith('id:') and str(uid) == tkey[3:]:
+        allowed = True
+    elif tkey.startswith('user:') and uname and uname == tkey[5:]:
+        allowed = True
+
+    if not allowed:
+        return bot.answer_callback_query(call.id, '⛔ Yeh secret whisper aapke liye nahi hai!', show_alert=True)
+    bot.answer_callback_query(call.id, f"🤫 {row['secret_text']}", show_alert=True)
+
+# ---------------- STYLISH TEXT GENERATOR ----------------
+ASCII_NORMAL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+FONT_MAPS = {
+    "Bold Serif": "𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗",
+    "Italic Bold": "𝘼𝘽𝘾𝘿𝙀𝙁𝙂𝙃𝙄𝙅𝙆𝙇𝙈𝙉𝙊𝙋𝙌𝙍𝙎𝙏𝙐𝙑𝙒𝙓𝙔𝙕𝙖𝙗𝙘𝙙𝙚𝙛𝙜𝙝𝙞𝙟𝙠𝙡𝙢𝙣𝙤𝙥𝙦𝙧𝙨𝙩𝙪𝙫𝙬𝙭𝙮𝙯0123456789",
+    "Script": "𝒜ℬ𝒞𝒟ℰℱ𝒢ℋℐ𝒥𝒦ℒℳ𝒩𝒪𝒫𝒬ℛ𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵𝒶𝒷𝒸𝒹ℯ𝒻ℊ𝒽𝒾𝒿𝓀𝓁𝓂𝓃ℴ𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏0123456789",
+    "Bold Script": "𝓐𝓑𝓒𝓓𝓔𝓕𝓖𝓗𝓘𝓙𝓚𝓛𝓜𝓝𝓞𝓟𝓠𝓡𝓢𝓣𝓤𝓥𝓦𝓧𝓨𝓩𝓪𝓫𝓬𝓭𝓮𝓯𝓰𝓱𝓲𝓳𝓴𝓵𝓶𝓷𝓸𝓹𝓺𝓻𝓼𝓽𝓾𝓿𝔀𝔁𝔂𝔃0123456789",
+    "Gothic": "𝔄𝔅ℭ𝔇𝔈𝔉𝔊ℌℑ𝔍𝔎𝔏𝔐𝔑𝔒𝔓𝔔ℜ𝔖𝔗𝔘𝔙𝔚𝔛𝔜ℨ𝔞𝔟𝔠𝔡𝔢𝔣𝔤𝔥𝔦𝔧𝔨𝔩𝔪𝔫𝔬𝔭𝔮𝔯𝔰𝔱𝔲𝔳𝔴𝔵𝔶𝔷0123456789",
+    "Bold Gothic": "𝕬𝕭𝕮𝕯𝕰𝕱𝕲𝕳𝕴𝕵𝕶𝕷𝕸𝕹𝕺𝕻𝕼𝕽𝕾𝕿𝖀𝖁𝖂𝖃𝖄𝖅𝖆𝖇𝖈𝖉𝖊𝖋𝖌𝖍𝖎𝖏𝖐𝖑𝖒𝖓𝖔𝖕𝖖𝖗𝖘𝖙𝖚𝖛𝖜𝖝𝖞𝖟0123456789",
+    "Double Struck": "𝔸𝔹ℂ𝔻𝔼𝔽𝔾ℍ𝕀𝕁𝕂𝕃𝕄ℕ𝕆ℙℚℝ𝕊𝕋𝕌𝕍𝕎𝕏𝕐ℤ𝕒𝕓𝕔𝕕𝕖𝕗𝕘𝕙𝕚𝕛𝕜𝕝𝕞𝕟𝕠𝕡𝕢𝕣𝕤𝕥𝕦𝕧𝕨𝕩𝕪𝕫𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+    "Monospace": "𝙰𝙱𝙲𝙳𝙴𝙵𝙶𝙷𝙸𝙹𝙺𝙻𝙼𝙽𝙾𝙿𝚀𝚁𝚂𝚃𝚄𝚅𝚆𝚇𝚈𝚉𝚊𝚋𝚌𝚍𝚎𝚏𝚐𝚑𝚒𝚓𝚔𝚕𝚖𝚗𝚘𝚙𝚚𝚛𝚜𝚝𝚞𝚟𝚠𝚡𝚢𝚣𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
+    "Circled": "ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ0①②③④⑤⑥⑦⑧⑨",
+    "Small Caps": "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘQʀꜱᴛᴜᴠᴡxʏᴢᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘQʀꜱᴛᴜᴠᴡxʏᴢ0123456789",
+}
+
+def stylize_text(txt):
+    results = []
+    for label, mapped in FONT_MAPS.items():
+        table = str.maketrans(ASCII_NORMAL, mapped)
+        results.append(f"• <code>{esc(txt.translate(table))}</code>")
+    results.append(f"• <code>★彡 {esc(txt)} 彡★</code>")
+    results.append(f"• <code>꧁༒☬ {esc(txt)} ☬༒꧂</code>")
+    return "\n".join(results)
+
+@bot.message_handler(commands=['style', 'stylish', 'font'])
+def stylish_cmd(m):
+    p = (m.text or '').split(maxsplit=1)
+    src = p[1].strip() if len(p) > 1 else ((m.reply_to_message.text or '').strip() if m.reply_to_message else '')
+    if not src:
+        return bot.reply_to(m, 'Usage: <code>/style Your Name</code> (tap any generated style to copy!)')
+    bot.reply_to(m, f'✨ <b>Stylish Designs (Tap to copy):</b>\n\n{stylize_text(src[:80])}')
+
+# ---------------- CRICKETER GUESS GAME (HOURLY AUTO + /cricket) ----------------
+CRICKETERS = [
+    ("Virat Kohli", "Indian batting legend, known as 'King Kohli' & 'Chase Master', jersey #18.", ["virat", "kohli", "virat kohli"]),
+    ("Rohit Sharma", "Indian captain nicknamed 'Hitman', holds record for 3 ODI double centuries.", ["rohit", "sharma", "rohit sharma"]),
+    ("MS Dhoni", "Former Indian wicketkeeper-captain, 'Captain Cool', won all 3 ICC white-ball trophies.", ["dhoni", "ms dhoni", "mahendra singh dhoni", "msd"]),
+    ("Sachin Tendulkar", "God of Cricket, 100 international centuries, jersey #10.", ["sachin", "tendulkar", "sachin tendulkar"]),
+    ("Jasprit Bumrah", "Indian pace spearhead famous for lethal yorkers and unorthodox bowling action.", ["bumrah", "jasprit", "jasprit bumrah"]),
+    ("Hardik Pandya", "Indian fast-bowling all-rounder, star finisher and IPL captain.", ["hardik", "pandya", "hardik pandya"]),
+    ("Ravindra Jadeja", "Indian left-arm spin all-rounder, 'Sir Jadeja', electric fielder.", ["jadeja", "ravindra", "ravindra jadeja"]),
+    ("KL Rahul", "Stylish Indian top-order batter and wicketkeeper from Karnataka.", ["kl rahul", "rahul"]),
+    ("Rishabh Pant", "Explosive Indian left-handed wicketkeeper-batter famous for one-handed sixes.", ["pant", "rishabh", "rishabh pant"]),
+    ("Suryakumar Yadav", "Indian T20 captain known as 'SKY' and 'Mr. 360' for innovative shots.", ["sky", "suryakumar", "suryakumar yadav"]),
+    ("Shubman Gill", "Young Indian opening batter nicknamed 'Prince' of Indian cricket.", ["gill", "shubman", "shubman gill"]),
+    ("AB de Villiers", "South African legend, original 'Mr. 360', played for RCB in IPL.", ["abd", "ab de villiers", "de villiers"]),
+    ("Chris Gayle", "West Indies power-hitter known as 'Universe Boss', 175* in IPL.", ["gayle", "chris gayle"]),
+    ("Pat Cummins", "Australian Test & ODI World Cup winning fast-bowling captain.", ["cummins", "pat cummins"]),
+    ("Glenn Maxwell", "Australian all-rounder 'Big Show', scored 201* on one leg in 2023 WC.", ["maxwell", "glenn maxwell"]),
+    ("Babar Azam", "Star Pakistani top-order batter famous for his cover drive.", ["babar", "babar azam"]),
+    ("Rashid Khan", "Afghanistan leg-spin wizard and T20 superstar.", ["rashid", "rashid khan"]),
+    ("Ben Stokes", "England Test captain and 2019 ODI World Cup final hero.", ["stokes", "ben stokes"]),
+    ("Kane Williamson", "Calm New Zealand batting great and former captain.", ["williamson", "kane williamson"]),
+    ("Yuvraj Singh", "Indian 2011 WC Player of the Tournament, hit 6 sixes in an over.", ["yuvraj", "yuvraj singh"]),
+    ("Gautam Gambhir", "Indian opener who played match-winning knocks in 2007 T20 & 2011 ODI WC finals.", ["gambhir", "gautam gambhir"]),
+    ("Suresh Raina", "Known as 'Mr. IPL', fearless left-handed middle-order Indian batter.", ["raina", "suresh raina"]),
+    ("Shikhar Dhawan", "Indian left-handed opener nicknamed 'Gabbar', famous for thigh-five celebration.", ["dhawan", "shikhar dhawan", "gabbar"]),
+    ("Mohammed Shami", "Indian seam bowler, highest wicket-taker in 2023 ODI World Cup.", ["shami", "mohammed shami"]),
+    ("Yuzvendra Chahal", "Indian leg-spinner and chess player, top IPL wicket-taker.", ["chahal", "yuzvendra chahal"]),
+    ("Sanju Samson", "Stylish Indian wicketkeeper-batter and Rajasthan Royals captain.", ["samson", "sanju", "sanju samson"]),
+    ("Rinku Singh", "Indian left-handed finisher famous for hitting 5 consecutive sixes in last over.", ["rinku", "rinku singh"]),
+    ("Travis Head", "Australian aggressive left-handed opener, 2023 WC final centurion.", ["travis head", "head"]),
+    ("Mitchell Starc", "Australian left-arm express pacer, lethal with the new and old ball.", ["starc", "mitchell starc"]),
+    ("David Warner", "Explosive Australian opener and Sunrisers Hyderabad IPL-winning captain.", ["warner", "david warner"]),
+]
+
+ACTIVE_CRICKET = {}  # chat_id -> {'name': str, 'hint': str, 'answers': list, 'asked_at': float}
+CRICKET_LOCK = threading.Lock()
+
+def post_cricket_question(chat_id, reply_to_id=None):
+    name, hint, answers = random.choice(CRICKETERS)
+    masked = " ".join("".join(ch if i == 0 else "_" for i, ch in enumerate(word)) for word in name.split())
+    with CRICKET_LOCK:
+        ACTIVE_CRICKET[chat_id] = {
+            'name': name,
+            'hint': hint,
+            'answers': [a.lower() for a in answers],
+            'asked_at': time.time()
+        }
+    text = (
+        f"🏏 <b>GUESS THE CRICKETER!</b>\n\n"
+        f"🧩 <b>Pattern:</b> <code>{masked}</code>\n"
+        f"💡 <b>Hint:</b> {esc(hint)}\n\n"
+        f"👇 <i>Neeche cricketer ka naam likhein! Sahi jawab dene wale ko <b>+50 Coins</b> milenge!</i>"
+    )
+    try:
+        bot.send_message(chat_id, text, reply_to_message_id=reply_to_id)
+    except Exception:
+        pass
+
+def check_cricket_answer(m):
+    if not m.text or m.text.startswith('/'):
+        return False
+    chat = m.chat.id
+    with CRICKET_LOCK:
+        q = ACTIVE_CRICKET.get(chat)
+        if not q:
+            return False
+        guess = re.sub(r'[^a-z0-9\s]', '', m.text.lower()).strip()
+        if not guess:
+            return False
+        if guess in q['answers'] or q['name'].lower() in guess:
+            winner_data = ACTIVE_CRICKET.pop(chat)
+        else:
+            return False
+
+    uid = m.from_user.id
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (uid, ''))
+        c.execute('UPDATE wallet SET coins=coins+50 WHERE user_id=?', (uid,))
+        row = c.execute('SELECT coins FROM wallet WHERE user_id=?', (uid,)).fetchone()
+    bal = row['coins'] if row else 50
+    bot.reply_to(
+        m,
+        f"🎉 <b>SAHI JAWAB!</b>\n"
+        f"🏆 Winner: <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a>\n"
+        f"🏏 Cricketer: <b>{esc(winner_data['name'])}</b>\n"
+        f"🪙 Reward: <b>+50 Coins</b> (Total Balance: <b>{bal}</b>)"
+    )
+    return True
+
+@bot.message_handler(commands=['cricket', 'guess'])
+def cricket_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /cricket in a group to play!')
+    post_cricket_question(m.chat.id, reply_to_id=m.message_id)
+
+def hourly_cricket_loop():
+    while True:
+        time.sleep(3600)
+        try:
+            with DB_LOCK, connect() as c:
+                chats = c.execute('SELECT DISTINCT chat_id FROM stats WHERE chat_id < 0').fetchall()
+            for r in chats:
+                cid = r['chat_id']
+                if setting(cid, 'cricket_game', 'on') == 'on':
+                    post_cricket_question(cid)
+                    time.sleep(1.5)
+        except Exception:
+            log.exception('Hourly cricket loop error')
+
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
 def monitor(m):
     if not group(m) or not m.from_user or m.from_user.is_bot: return
     chat, uid = m.chat.id, m.from_user.id
     record(m)
+
+    # 1. Rose-bot style auto-delete locks (Admin & /approve users bypass)
+    if check_and_enforce_lock(m):
+        return
+
     body = (m.text or m.caption or '').strip()
+
+    # 2. Check active Cricketer Guess Game answer
+    if check_cricket_answer(m):
+        return
+
+    # 3. Learn natural chat replies (text, stickers, GIFs) for chatbot
+    learn_chatbot_data(m)
 
     if setting(chat, 'antispam') == 'on' and not admin(chat, uid) and not is_antispam_approved(chat, uid):
         now = time.time(); q = FLOOD[(chat,uid)]; q.append(now)
@@ -1425,10 +1839,22 @@ def monitor(m):
                 elif af['media_type'] == 'animation': bot.send_animation(chat, af['media_file_id'], reply_to_message_id=m.message_id)
         except Exception: log.exception('AFK notice failed')
 
+    # 4. Chatbot trigger: when someone says "Mishra robot" or replies to bot's message
+    if setting(chat, 'chatbot', 'on') == 'on' and not body.startswith('/'):
+        replied_to_bot = False
+        try:
+            if m.reply_to_message and m.reply_to_message.from_user and m.reply_to_message.from_user.id == bot.get_me().id:
+                replied_to_bot = True
+        except Exception:
+            pass
+        if (body and BOT_NAME_RE.search(body)) or replied_to_bot:
+            send_chatbot_reply(m, body or 'hi')
+
 # ---------------- STARTUP ----------------
 def main():
     init_db()
     threading.Thread(target=health_server, daemon=True, name='health-server').start()
+    threading.Thread(target=hourly_cricket_loop, daemon=True, name='cricket-game').start()
     log.info('Mishra Guard Robot V4 started; health server on port %s', PORT)
     while True:
         try:

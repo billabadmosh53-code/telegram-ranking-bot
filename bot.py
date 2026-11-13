@@ -282,7 +282,7 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
 /ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
-/cricket /guess — guess cricketer game (auto-asks every 1 hr & awards coins)
+/cricket /guess /spiritual — hard cricket & spiritual quiz (auto every 8 hrs & awards coins)
 
 <b>Optional AI</b>
 /ai question — needs GROQ_API_KEY
@@ -1925,58 +1925,216 @@ def stylish_cmd(m):
         return bot.reply_to(m, 'Usage: <code>/style Your Name</code> (tap any generated style to copy!)')
     bot.reply_to(m, f'✨ <b>Stylish Designs (Tap to copy):</b>\n\n{stylize_text(src[:80])}')
 
-# ---------------- CRICKETER GUESS GAME (HOURLY AUTO + /cricket) ----------------
-CRICKETERS = [
-    ("Virat Kohli", "Indian batting legend, known as 'King Kohli' & 'Chase Master', jersey #18.", ["virat", "kohli", "virat kohli"]),
-    ("Rohit Sharma", "Indian captain nicknamed 'Hitman', holds record for 3 ODI double centuries.", ["rohit", "sharma", "rohit sharma"]),
-    ("MS Dhoni", "Former Indian wicketkeeper-captain, 'Captain Cool', won all 3 ICC white-ball trophies.", ["dhoni", "ms dhoni", "mahendra singh dhoni", "msd"]),
-    ("Sachin Tendulkar", "God of Cricket, 100 international centuries, jersey #10.", ["sachin", "tendulkar", "sachin tendulkar"]),
-    ("Jasprit Bumrah", "Indian pace spearhead famous for lethal yorkers and unorthodox bowling action.", ["bumrah", "jasprit", "jasprit bumrah"]),
-    ("Hardik Pandya", "Indian fast-bowling all-rounder, star finisher and IPL captain.", ["hardik", "pandya", "hardik pandya"]),
-    ("Ravindra Jadeja", "Indian left-arm spin all-rounder, 'Sir Jadeja', electric fielder.", ["jadeja", "ravindra", "ravindra jadeja"]),
-    ("KL Rahul", "Stylish Indian top-order batter and wicketkeeper from Karnataka.", ["kl rahul", "rahul"]),
-    ("Rishabh Pant", "Explosive Indian left-handed wicketkeeper-batter famous for one-handed sixes.", ["pant", "rishabh", "rishabh pant"]),
-    ("Suryakumar Yadav", "Indian T20 captain known as 'SKY' and 'Mr. 360' for innovative shots.", ["sky", "suryakumar", "suryakumar yadav"]),
-    ("Shubman Gill", "Young Indian opening batter nicknamed 'Prince' of Indian cricket.", ["gill", "shubman", "shubman gill"]),
-    ("AB de Villiers", "South African legend, original 'Mr. 360', played for RCB in IPL.", ["abd", "ab de villiers", "de villiers"]),
-    ("Chris Gayle", "West Indies power-hitter known as 'Universe Boss', 175* in IPL.", ["gayle", "chris gayle"]),
-    ("Pat Cummins", "Australian Test & ODI World Cup winning fast-bowling captain.", ["cummins", "pat cummins"]),
-    ("Glenn Maxwell", "Australian all-rounder 'Big Show', scored 201* on one leg in 2023 WC.", ["maxwell", "glenn maxwell"]),
-    ("Babar Azam", "Star Pakistani top-order batter famous for his cover drive.", ["babar", "babar azam"]),
-    ("Rashid Khan", "Afghanistan leg-spin wizard and T20 superstar.", ["rashid", "rashid khan"]),
-    ("Ben Stokes", "England Test captain and 2019 ODI World Cup final hero.", ["stokes", "ben stokes"]),
-    ("Kane Williamson", "Calm New Zealand batting great and former captain.", ["williamson", "kane williamson"]),
-    ("Yuvraj Singh", "Indian 2011 WC Player of the Tournament, hit 6 sixes in an over.", ["yuvraj", "yuvraj singh"]),
-    ("Gautam Gambhir", "Indian opener who played match-winning knocks in 2007 T20 & 2011 ODI WC finals.", ["gambhir", "gautam gambhir"]),
-    ("Suresh Raina", "Known as 'Mr. IPL', fearless left-handed middle-order Indian batter.", ["raina", "suresh raina"]),
-    ("Shikhar Dhawan", "Indian left-handed opener nicknamed 'Gabbar', famous for thigh-five celebration.", ["dhawan", "shikhar dhawan", "gabbar"]),
-    ("Mohammed Shami", "Indian seam bowler, highest wicket-taker in 2023 ODI World Cup.", ["shami", "mohammed shami"]),
-    ("Yuzvendra Chahal", "Indian leg-spinner and chess player, top IPL wicket-taker.", ["chahal", "yuzvendra chahal"]),
-    ("Sanju Samson", "Stylish Indian wicketkeeper-batter and Rajasthan Royals captain.", ["samson", "sanju", "sanju samson"]),
-    ("Rinku Singh", "Indian left-handed finisher famous for hitting 5 consecutive sixes in last over.", ["rinku", "rinku singh"]),
-    ("Travis Head", "Australian aggressive left-handed opener, 2023 WC final centurion.", ["travis head", "head"]),
-    ("Mitchell Starc", "Australian left-arm express pacer, lethal with the new and old ball.", ["starc", "mitchell starc"]),
-    ("David Warner", "Explosive Australian opener and Sunrisers Hyderabad IPL-winning captain.", ["warner", "david warner"]),
+# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (8-HOUR AUTO + /cricket + /spiritual) ----------------
+HARD_QUIZ_BANK = [
+    # --- HARD CRICKET QUESTIONS ---
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "Test cricket itihas mein ek hi match mein 10 wickets (all 10 in an innings) lene wale pehle Bharatiya aur duniya ke doosre gendbaaz kaun hain?",
+        "Anil Kumble",
+        ["anil kumble", "kumble"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "1983 ODI World Cup final mein India ke khilaf sabse zyada runs kis West Indies ballebaj ne banaye the?",
+        "Viv Richards",
+        ["viv richards", "vivian richards", "sir viv richards", "richards"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "Test cricket mein India ke liye pehla triple century (300+) lagane wale ballebaj kaun hain?",
+        "Virender Sehwag",
+        ["virender sehwag", "sehwag"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "ODI cricket mein pehli double century (200*) kis stadium mein aur kis khiladi ne banayi thi?",
+        "Sachin Tendulkar",
+        ["sachin tendulkar", "sachin"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "IPL itihas mein sabse pehli hat-trick kis gendbaaz ne li thi (2008 season mein)?",
+        "Lakshmipathy Balaji",
+        ["lakshmipathy balaji", "balaji", "l balaji"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "Test cricket ke itihas mein 400* runs ka world record kis West Indies legend ke naam hai?",
+        "Brian Lara",
+        ["brian lara", "lara"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "2007 T20 World Cup final mein India ke liye aakhri over kis gendbaaz ne fenka tha?",
+        "Joginder Sharma",
+        ["joginder sharma", "joginder"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "Test cricket mein sabse zyada 800 wickets lene wale Sri Lankan off-spinner kaun hain?",
+        "Muttiah Muralitharan",
+        ["muttiah muralitharan", "muralitharan", "murali"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "2011 ODI World Cup quarter-final mein Australia ke khilaf Yuvraj Singh ke saath match-winning partnership kisne ki thi?",
+        "Suresh Raina",
+        ["suresh raina", "raina"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "International cricket mein 6 balls par 6 sixes lagane wale duniya ke pehle ballebaj kaun the (2007 WC)?",
+        "Herschelle Gibbs",
+        ["herschelle gibbs", "gibbs"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "Test cricket mein lagatar 4 Test matches mein 4 double centuries lagane wale ekmatra ballebaj kaun hain?",
+        "Virat Kohli",
+        ["virat kohli", "kohli", "virat"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "IPL ke ek hi season (2016) mein 973 runs banane ka all-time record kis khiladi ke naam hai?",
+        "Virat Kohli",
+        ["virat kohli", "kohli", "virat"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "International T20 cricket mein sabse tez century (35 balls) lagane wale Bharatiya ballebaj kaun hain?",
+        "Rohit Sharma",
+        ["rohit sharma", "rohit"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "India ke liye Test cricket mein hat-trick lene wale sabse pehle gendbaaz kaun the (2001 Kolkata Test)?",
+        "Harbhajan Singh",
+        ["harbhajan singh", "harbhajan", "bhajji"]
+    ),
+    (
+        "🏏 HARD CRICKET QUIZ",
+        "World Cup itihas mein sabse tez double century (128 balls) kis West Indies khiladi ne lagayi thi?",
+        "Chris Gayle",
+        ["chris gayle", "gayle"]
+    ),
+
+    # --- SPIRITUAL & SANATAN DHARMA QUESTIONS ---
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Shrimad Bhagavad Gita mein kul kitne adhyay (chapters) hain? (Number ya shabd likhein)",
+        "18",
+        ["18", "eighteen", "atharah"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Mahabharata ke yuddh mein Bhagwan Shri Krishna ke shankh (conch) ka kya naam tha?",
+        "Panchajanya",
+        ["panchajanya", "panchjanya"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Ramayana mein Lanka jaane ke liye samudra par pul (Ram Setu) banane wale do vanar bhai kaun the? (Kisi ek ka naam likhein)",
+        "Nal aur Neel",
+        ["nal", "neel", "nal neel", "nal aur neel", "nala", "nila"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Shiv ke dhanush ka kya naam tha jise Shri Ram ne Sita Swayamvar mein toda tha?",
+        "Pinaka",
+        ["pinaka", "pinak"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Arjun ke dhanush ka kya naam tha jo unhe Agni Dev se prapt hua tha?",
+        "Gandiva",
+        ["gandiva", "gandiv"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Sanatan Dharma mein kul kitne Mahapuran hain? (Number likhein)",
+        "18",
+        ["18", "eighteen", "atharah"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Char Dham yatra mein Uttar disha (Uttarakhand) mein sthit Bhagwan Vishnu ka dham kaunsa hai?",
+        "Badrinath",
+        ["badrinath", "badri"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Shiv ke 12 Jyotirlingon mein se pratham (pehla) Jyotirling kaunsa mana jata hai?",
+        "Somnath",
+        ["somnath"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Mahabharata ki rachna kis Maharishi ne ki thi (jise Lord Ganesha ne likha tha)?",
+        "Ved Vyas",
+        ["ved vyas", "vyas", "maharishi ved vyas", "krishna dvaipayana"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Samudra Manthan ke samay parvat ko mathne ke liye kis nagraj ko rassi (rope) banaya gaya tha?",
+        "Vasuki",
+        ["vasuki"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Vishnu ke 10 avataron mein se 'Narasimha' avatar ne kis asur ka vadh kiya tha?",
+        "Hiranyakashipu",
+        ["hiranyakashipu", "hiranyakashyap"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Hanuman Chalisa ki rachna kis mahan sant aur kavi ne ki thi?",
+        "Tulsidas",
+        ["tulsidas", "goswami tulsidas"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Ganga nadi ko swarg se prithvi par laane ke liye kis raja ne kathor tapasya ki thi?",
+        "Bhagirath",
+        ["bhagirath", "raja bhagirath"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagavad Gita mein Arjun ke rath ke sarathi kaun the?",
+        "Shri Krishna",
+        ["krishna", "shri krishna", "lord krishna", "sri krishna"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Surya Dev ke rath mein kul kitne ghode (horses) jude hote hain? (Number likhein)",
+        "7",
+        ["7", "seven", "saat"]
+    ),
 ]
 
-ACTIVE_CRICKET = {}  # chat_id -> {'name': str, 'hint': str, 'answers': list, 'asked_at': float}
+ACTIVE_CRICKET = {}  # chat_id -> {'category': str, 'question': str, 'name': str, 'answers': list, 'asked_at': float}
 CRICKET_LOCK = threading.Lock()
 
-def post_cricket_question(chat_id, reply_to_id=None):
-    name, hint, answers = random.choice(CRICKETERS)
-    masked = " ".join("".join(ch if i == 0 else "_" for i, ch in enumerate(word)) for word in name.split())
+def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
+    pool = HARD_QUIZ_BANK
+    if category_filter == 'cricket':
+        pool = [q for q in HARD_QUIZ_BANK if 'CRICKET' in q[0]]
+    elif category_filter == 'spiritual':
+        pool = [q for q in HARD_QUIZ_BANK if 'SPIRITUAL' in q[0]]
+
+    category, question, display_ans, answers = random.choice(pool)
     with CRICKET_LOCK:
         ACTIVE_CRICKET[chat_id] = {
-            'name': name,
-            'hint': hint,
+            'category': category,
+            'question': question,
+            'name': display_ans,
             'answers': [a.lower() for a in answers],
             'asked_at': time.time()
         }
     text = (
-        f"🏏 <b>GUESS THE CRICKETER!</b>\n\n"
-        f"🧩 <b>Pattern:</b> <code>{masked}</code>\n"
-        f"💡 <b>Hint:</b> {esc(hint)}\n\n"
-        f"👇 <i>Neeche cricketer ka naam likhein! Sahi jawab dene wale ko <b>+50 Coins</b> milenge!</i>"
+        f"<b>{category}</b>\n\n"
+        f"❓ <b>Sawal:</b> {esc(question)}\n\n"
+        f"👇 <i>Neeche sahi jawab likhein! Pehle sahi jawab dene wale ko <b>+75 Coins</b> milenge!</i>"
     )
     try:
         bot.send_message(chat_id, text, reply_to_message_id=reply_to_id)
@@ -1994,7 +2152,12 @@ def check_cricket_answer(m):
         guess = re.sub(r'[^a-z0-9\s]', '', m.text.lower()).strip()
         if not guess:
             return False
-        if guess in q['answers'] or q['name'].lower() in guess:
+        matched = False
+        for ans in q['answers']:
+            if guess == ans or (len(ans) >= 4 and ans in guess):
+                matched = True
+                break
+        if matched:
             winner_data = ACTIVE_CRICKET.pop(chat)
         else:
             return False
@@ -2002,15 +2165,15 @@ def check_cricket_answer(m):
     uid = m.from_user.id
     with DB_LOCK, connect() as c:
         c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (uid, ''))
-        c.execute('UPDATE wallet SET coins=coins+50 WHERE user_id=?', (uid,))
+        c.execute('UPDATE wallet SET coins=coins+75 WHERE user_id=?', (uid,))
         row = c.execute('SELECT coins FROM wallet WHERE user_id=?', (uid,)).fetchone()
-    bal = row['coins'] if row else 50
+    bal = row['coins'] if row else 75
     bot.reply_to(
         m,
-        f"🎉 <b>SAHI JAWAB!</b>\n"
+        f"🎉 <b>BILKUL SAHI JAWAB!</b>\n"
         f"🏆 Winner: <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a>\n"
-        f"🏏 Cricketer: <b>{esc(winner_data['name'])}</b>\n"
-        f"🪙 Reward: <b>+50 Coins</b> (Total Balance: <b>{bal}</b>)"
+        f"✅ Sahi Uttar: <b>{esc(winner_data['name'])}</b>\n"
+        f"🪙 Reward: <b>+75 Coins</b> (Total Balance: <b>{bal}</b>)"
     )
     return True
 
@@ -2018,11 +2181,18 @@ def check_cricket_answer(m):
 def cricket_cmd(m):
     if not group(m):
         return bot.reply_to(m, 'Use /cricket in a group to play!')
-    post_cricket_question(m.chat.id, reply_to_id=m.message_id)
+    post_cricket_question(m.chat.id, reply_to_id=m.message_id, category_filter='cricket')
+
+@bot.message_handler(commands=['spiritual', 'gyan'])
+def spiritual_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /spiritual in a group to play!')
+    post_cricket_question(m.chat.id, reply_to_id=m.message_id, category_filter='spiritual')
 
 def hourly_cricket_loop():
+    # Runs every 8 hours (28800 seconds) and posts a random Hard Cricket or Spiritual quiz
     while True:
-        time.sleep(3600)
+        time.sleep(28800)
         try:
             with DB_LOCK, connect() as c:
                 chats = c.execute('SELECT DISTINCT chat_id FROM stats WHERE chat_id < 0').fetchall()
@@ -2032,7 +2202,7 @@ def hourly_cricket_loop():
                     post_cricket_question(cid)
                     time.sleep(1.5)
         except Exception:
-            log.exception('Hourly cricket loop error')
+            log.exception('8-hour quiz loop error')
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])

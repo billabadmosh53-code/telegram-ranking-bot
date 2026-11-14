@@ -1927,237 +1927,160 @@ def stylish_cmd(m):
         return bot.reply_to(m, 'Usage: <code>/style Your Name</code> (tap any generated style to copy!)')
     bot.reply_to(m, f'✨ <b>Stylish Designs (Tap to copy):</b>\n\n{stylize_text(src[:80])}')
 
-# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (2-HOUR AUTO + SEPARATE ON/OFF) ----------------
+# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (NO REPEAT + AI DYNAMIC + 2-HOUR AUTO) ----------------
 HARD_QUIZ_BANK = [
-    # --- HARD CRICKET QUESTIONS ---
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "Test cricket itihas mein ek hi match mein 10 wickets (all 10 in an innings) lene wale pehle Bharatiya aur duniya ke doosre gendbaaz kaun hain?",
-        "Anil Kumble",
-        ["anil kumble", "kumble"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "1983 ODI World Cup final mein India ke khilaf sabse zyada runs kis West Indies ballebaj ne banaye the?",
-        "Viv Richards",
-        ["viv richards", "vivian richards", "sir viv richards", "richards"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "Test cricket mein India ke liye pehla triple century (300+) lagane wale ballebaj kaun hain?",
-        "Virender Sehwag",
-        ["virender sehwag", "sehwag"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "ODI cricket mein pehli double century (200*) kis Bharatiya khiladi ne banayi thi?",
-        "Sachin Tendulkar",
-        ["sachin tendulkar", "sachin"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "IPL itihas mein sabse pehli hat-trick kis gendbaaz ne li thi (2008 season mein)?",
-        "Lakshmipathy Balaji",
-        ["lakshmipathy balaji", "balaji", "l balaji"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "Test cricket ke itihas mein 400* runs ka world record kis West Indies legend ke naam hai?",
-        "Brian Lara",
-        ["brian lara", "lara"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "2007 T20 World Cup final mein India ke liye aakhri over kis gendbaaz ne fenka tha?",
-        "Joginder Sharma",
-        ["joginder sharma", "joginder"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "Test cricket mein sabse zyada 800 wickets lene wale Sri Lankan off-spinner kaun hain?",
-        "Muttiah Muralitharan",
-        ["muttiah muralitharan", "muralitharan", "murali"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "2011 ODI World Cup quarter-final mein Australia ke khilaf Yuvraj Singh ke saath match-winning partnership kisne ki thi?",
-        "Suresh Raina",
-        ["suresh raina", "raina"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "International cricket mein 6 balls par 6 sixes lagane wale duniya ke pehle ballebaj kaun the (2007 WC)?",
-        "Herschelle Gibbs",
-        ["herschelle gibbs", "gibbs"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "Test cricket mein lagatar 4 Test matches mein 4 double centuries lagane wale ekmatra ballebaj kaun hain?",
-        "Virat Kohli",
-        ["virat kohli", "kohli", "virat"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "IPL ke ek hi season (2016) mein 973 runs banane ka all-time record kis khiladi ke naam hai?",
-        "Virat Kohli",
-        ["virat kohli", "kohli", "virat"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "International T20 cricket mein sabse tez century (35 balls) lagane wale Bharatiya ballebaj kaun hain?",
-        "Rohit Sharma",
-        ["rohit sharma", "rohit"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "India ke liye Test cricket mein hat-trick lene wale sabse pehle gendbaaz kaun the (2001 Kolkata Test)?",
-        "Harbhajan Singh",
-        ["harbhajan singh", "harbhajan", "bhajji"]
-    ),
-    (
-        "🏏 HARD CRICKET QUIZ",
-        "World Cup itihas mein sabse tez double century (128 balls) kis West Indies khiladi ne lagayi thi?",
-        "Chris Gayle",
-        ["chris gayle", "gayle"]
-    ),
+    # --- HARD CRICKET QUESTIONS (30+ Unique Questions) ---
+    ("🏏 HARD CRICKET QUIZ", "Test cricket itihas mein ek hi match mein 10 wickets (all 10 in an innings) lene wale pehle Bharatiya aur duniya ke doosre gendbaaz kaun hain?", "Anil Kumble", ["anil kumble", "kumble"]),
+    ("🏏 HARD CRICKET QUIZ", "1983 ODI World Cup final mein India ke khilaf sabse zyada runs kis West Indies ballebaj ne banaye the?", "Viv Richards", ["viv richards", "vivian richards", "sir viv richards", "richards"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein India ke liye pehla triple century (300+) lagane wale ballebaj kaun hain?", "Virender Sehwag", ["virender sehwag", "sehwag"]),
+    ("🏏 HARD CRICKET QUIZ", "ODI cricket mein pehli double century (200*) kis Bharatiya khiladi ne banayi thi?", "Sachin Tendulkar", ["sachin tendulkar", "sachin"]),
+    ("🏏 HARD CRICKET QUIZ", "IPL itihas mein sabse pehli hat-trick kis gendbaaz ne li thi (2008 season mein)?", "Lakshmipathy Balaji", ["lakshmipathy balaji", "balaji", "l balaji"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket ke itihas mein 400* runs ka world record kis West Indies legend ke naam hai?", "Brian Lara", ["brian lara", "lara"]),
+    ("🏏 HARD CRICKET QUIZ", "2007 T20 World Cup final mein India ke liye aakhri over kis gendbaaz ne fenka tha?", "Joginder Sharma", ["joginder sharma", "joginder"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse zyada 800 wickets lene wale Sri Lankan off-spinner kaun hain?", "Muttiah Muralitharan", ["muttiah muralitharan", "muralitharan", "murali"]),
+    ("🏏 HARD CRICKET QUIZ", "2011 ODI World Cup quarter-final mein Australia ke khilaf Yuvraj Singh ke saath match-winning partnership kisne ki thi?", "Suresh Raina", ["suresh raina", "raina"]),
+    ("🏏 HARD CRICKET QUIZ", "International cricket mein 6 balls par 6 sixes lagane wale duniya ke pehle ballebaj kaun the (2007 WC)?", "Herschelle Gibbs", ["herschelle gibbs", "gibbs"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein lagatar 4 Test matches mein 4 double centuries lagane wale ekmatra ballebaj kaun hain?", "Virat Kohli", ["virat kohli", "kohli", "virat"]),
+    ("🏏 HARD CRICKET QUIZ", "IPL ke ek hi season (2016) mein 973 runs banane ka all-time record kis khiladi ke naam hai?", "Virat Kohli", ["virat kohli", "kohli", "virat"]),
+    ("🏏 HARD CRICKET QUIZ", "International T20 cricket mein sabse tez century (35 balls) lagane wale Bharatiya ballebaj kaun hain?", "Rohit Sharma", ["rohit sharma", "rohit"]),
+    ("🏏 HARD CRICKET QUIZ", "India ke liye Test cricket mein hat-trick lene wale sabse pehle gendbaaz kaun the (2001 Kolkata Test)?", "Harbhajan Singh", ["harbhajan singh", "harbhajan", "bhajji"]),
+    ("🏏 HARD CRICKET QUIZ", "World Cup itihas mein sabse tez double century (128 balls) kis West Indies khiladi ne lagayi thi?", "Chris Gayle", ["chris gayle", "gayle"]),
+    ("🏏 HARD CRICKET QUIZ", "ODI cricket mein sabse tez 10,000 runs pure karne wale duniya ke pehle ballebaj kaun hain?", "Virat Kohli", ["virat kohli", "kohli", "virat"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse zyada 15,921 runs banane wale duniya ke ekmatra ballebaj kaun hain?", "Sachin Tendulkar", ["sachin tendulkar", "sachin"]),
+    ("🏏 HARD CRICKET QUIZ", "2019 ODI World Cup final ke Super Over mein England ke liye kisne batting ki thi? (Kisi ek ka naam likhein)", "Ben Stokes / Jos Buttler", ["ben stokes", "stokes", "jos buttler", "buttler"]),
+    ("🏏 HARD CRICKET QUIZ", "IPL itihas mein 200+ wickets lene wale sabse pehle gendbaaz kaun bane the?", "Yuzvendra Chahal", ["yuzvendra chahal", "chahal"]),
+    ("🏏 HARD CRICKET QUIZ", "Test match ki dono innings mein century lagane wale pehle Bharatiya wicketkeeper kaun hain?", "Rishabh Pant", ["rishabh pant", "pant"]),
+    ("🏏 HARD CRICKET QUIZ", "1983 World Cup mein Zimbabwe ke khilaf 175* runs ki aitihasik pari kisne kheli thi?", "Kapil Dev", ["kapil dev", "kapil"]),
+    ("🏏 HARD CRICKET QUIZ", "International cricket mein sabse tez gend (161.3 km/h) fenkne wale Pakistani pacer kaun hain?", "Shoaib Akhtar", ["shoaib akhtar", "shoaib"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse zyada 134 catches (non-wicketkeeper) pakadne wale Bharatiya khiladi kaun hain?", "Rahul Dravid", ["rahul dravid", "dravid"]),
+    ("🏏 HARD CRICKET QUIZ", "T20 International mein hat-trick lene wale pehle Bharatiya purush gendbaaz kaun hain?", "Deepak Chahar", ["deepak chahar", "chahar"]),
+    ("🏏 HARD CRICKET QUIZ", "2023 ODI World Cup mein sabse zyada 24 wickets lene wale gendbaaz kaun the?", "Mohammed Shami", ["mohammed shami", "shami"]),
 
-    # --- SPIRITUAL QUESTIONS (RADHA KRISHNA, RAM SITA, MAHADEV PARVATI, RAMAYANA, MAHABHARATA, JAGANNATH JI) ---
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Radha Rani ke pita ji ka kya naam tha jo Barsana ke mukhiya the?",
-        "Vrishabhanu",
-        ["vrishabhanu", "vrishbhanu", "bhanu"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Shri Krishna ki bansuri (flute) ka kya naam tha jiski dhun par Radha Rani aur Gopiyan mugdh ho jaati thi?",
-        "Mahananda",
-        ["mahananda", "murali", "bansuri"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Radha Rani ki mata ji ka kya naam tha?",
-        "Kirtida",
-        ["kirtida", "keertida"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Vrindavan mein jis pavitra sthan par Bhagwan Shri Krishna aur Radha Rani ne Maharaas rachaya tha, us van ka kya naam hai?",
-        "Nidhivan",
-        ["nidhivan", "nidhi van"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Puri (Odisha) mein sthit Jagannath Mandir mein Bhagwan Jagannath ke saath unke bade bhai aur behen kaun virajman hain? (Kisi ek ka naam likhein)",
-        "Balabhadra aur Subhadra",
-        ["balabhadra", "subhadra", "balram", "balabhadra aur subhadra"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Jagannath ji ki vishav-prasiddh Rath Yatra har saal kis Hindu mahine mein nikali jaati hai?",
-        "Ashadha",
-        ["ashadha", "ashadh", "asadha"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Jagannath Puri ke rath 'Nandighosha' (Bhagwan Jagannath ji ke rath) mein kul kitne pahiye (wheels) hote hain?",
-        "16",
-        ["16", "sixteen", "solah"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Mata Sita ke pita Raja Janak kis rajya ke raja the?",
-        "Mithila (Videha)",
-        ["mithila", "videha", "janakpur"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Ramayana mein Mata Sita ka haran karne ke baad Ravan ne unhe Lanka ke kis vatika mein rakha tha?",
-        "Ashok Vatika",
-        ["ashok vatika", "ashoka vatika"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Shri Ram ke vanvas jaane par unki khadau (paduka) rakh kar 14 varsh tak Ayodhya ka rajya kisne sambhala tha?",
-        "Bharat",
-        ["bharat", "bharata"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Ramayana mein Lanka jaane ke liye samudra par pul (Ram Setu) banane wale do vanar bhai kaun the?",
-        "Nal aur Neel",
-        ["nal", "neel", "nal neel", "nal aur neel"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Shiv ke dhanush ka kya naam tha jise Shri Ram ne Sita Swayamvar mein toda tha?",
-        "Pinaka",
-        ["pinaka", "pinak"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Mata Parvati ke pita ka kya naam tha jo parvatraj the?",
-        "Himavan",
-        ["himavan", "himavat", "himalaya"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Mahadev aur Mata Parvati ke bade putra (Devtaon ke Senapati) ka kya naam hai?",
-        "Kartikeya",
-        ["kartikeya", "murugan", "skanda", "subrahmanya"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Shiv ke 12 Jyotirlingon mein se pratham (pehla) Jyotirling kaunsa hai?",
-        "Somnath",
-        ["somnath"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Mahadev ke gale mein lipte hue nagraj ka kya naam hai?",
-        "Vasuki",
-        ["vasuki"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Shrimad Bhagavad Gita mein kul kitne adhyay (chapters) hain?",
-        "18",
-        ["18", "eighteen", "atharah"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Mahabharata ke yuddh mein Bhagwan Shri Krishna ke shankh (conch) ka kya naam tha?",
-        "Panchajanya",
-        ["panchajanya", "panchjanya"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Arjun ke dhanush ka kya naam tha jo unhe Agni Dev se prapt hua tha?",
-        "Gandiva",
-        ["gandiva", "gandiv"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Mahabharata ki rachna kis Maharishi ne ki thi (jise Shri Ganesh ji ne likha tha)?",
-        "Ved Vyas",
-        ["ved vyas", "vyas", "maharishi ved vyas"]
-    ),
+    # --- SPIRITUAL QUESTIONS (30+ Unique Questions: Radha Krishna, Ram Sita, Mahadev Parvati, Jagannath ji, Ramayana, Mahabharata) ---
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ke pita ji ka kya naam tha jo Barsana ke mukhiya the?", "Vrishabhanu", ["vrishabhanu", "vrishbhanu", "bhanu"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shri Krishna ki bansuri (flute) ka kya naam tha jiski dhun par Radha Rani aur Gopiyan mugdh ho jaati thi?", "Mahananda", ["mahananda", "murali", "bansuri"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ki mata ji ka kya naam tha?", "Kirtida", ["kirtida", "keertida"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Vrindavan mein jis pavitra sthan par Bhagwan Shri Krishna aur Radha Rani ne Maharaas rachaya tha, us van ka kya naam hai?", "Nidhivan", ["nidhivan", "nidhi van"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Puri (Odisha) mein sthit Jagannath Mandir mein Bhagwan Jagannath ke saath unke bade bhai aur behen kaun virajman hain?", "Balabhadra aur Subhadra", ["balabhadra", "subhadra", "balram", "balabhadra aur subhadra"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Jagannath ji ki vishav-prasiddh Rath Yatra har saal kis Hindu mahine mein nikali jaati hai?", "Ashadha", ["ashadha", "ashadh", "asadha"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Jagannath Puri ke rath 'Nandighosha' (Bhagwan Jagannath ji ke rath) mein kul kitne pahiye (wheels) hote hain?", "16", ["16", "sixteen", "solah"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mata Sita ke pita Raja Janak kis rajya ke raja the?", "Mithila (Videha)", ["mithila", "videha", "janakpur"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ramayana mein Mata Sita ka haran karne ke baad Ravan ne unhe Lanka ke kis vatika mein rakha tha?", "Ashok Vatika", ["ashok vatika", "ashoka vatika"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Shri Ram ke vanvas jaane par unki khadau (paduka) rakh kar 14 varsh tak Ayodhya ka rajya kisne sambhala tha?", "Bharat", ["bharat", "bharata"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ramayana mein Lanka jaane ke liye samudra par pul (Ram Setu) banane wale do vanar bhai kaun the?", "Nal aur Neel", ["nal", "neel", "nal neel", "nal aur neel"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shiv ke dhanush ka kya naam tha jise Shri Ram ne Sita Swayamvar mein toda tha?", "Pinaka", ["pinaka", "pinak"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mata Parvati ke pita ka kya naam tha jo parvatraj the?", "Himavan", ["himavan", "himavat", "himalaya"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Mahadev aur Mata Parvati ke bade putra (Devtaon ke Senapati) ka kya naam hai?", "Kartikeya", ["kartikeya", "murugan", "skanda", "subrahmanya"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shiv ke 12 Jyotirlingon mein se pratham (pehla) Jyotirling kaunsa hai?", "Somnath", ["somnath"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Mahadev ke gale mein lipte hue nagraj ka kya naam hai?", "Vasuki", ["vasuki"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Shrimad Bhagavad Gita mein kul kitne adhyay (chapters) hain?", "18", ["18", "eighteen", "atharah"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata ke yuddh mein Bhagwan Shri Krishna ke shankh (conch) ka kya naam tha?", "Panchajanya", ["panchajanya", "panchjanya"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Arjun ke dhanush ka kya naam tha jo unhe Agni Dev se prapt hua tha?", "Gandiva", ["gandiva", "gandiv"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata ki rachna kis Maharishi ne ki thi (jise Shri Ganesh ji ne likha tha)?", "Ved Vyas", ["ved vyas", "vyas", "maharishi ved vyas"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ka janm kis pavitra gaon mein hua tha?", "Rawal", ["rawal", "raval"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Jagannath ji ke bade bhai Balabhadra ji ke rath ka kya naam hai?", "Taladhwaja", ["taladhwaja", "taladhwaj"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Devi Subhadra ji ke rath ka kya naam hai jo Jagannath Rath Yatra mein chalta hai?", "Darpadalana", ["darpadalana", "devadalana", "padmadhwaja"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mata Sita ki chhoti behen ka kya naam tha jinka vivah Lakshman ji se hua tha?", "Urmila", ["urmila"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Shri Ram ke param bhakt Hanuman ji ki mata ka kya naam tha?", "Anjani", ["anjani", "anjana"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shiv ke trishul ka kya naam hai?", "Pinaka / Vijaya", ["vijaya", "pinaka", "trishul"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata mein Bhishma Pitamah ke bachpan ka kya naam tha?", "Devavrata", ["devavrata", "devavrat"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ganga nadi ko swarg se prithvi par laane ke liye kis raja ne kathor tapasya ki thi?", "Bhagirath", ["bhagirath", "raja bhagirath"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Govardhan Parvat ko Bhagwan Shri Krishna ne apni kis ungli par uthaya tha?", "Kanistha (Chhoti ungli)", ["kanistha", "little finger", "chhoti", "kanistha ungli"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Kedarnath Jyotirling Bharat ke kis rajya mein sthit hai?", "Uttarakhand", ["uttarakhand"]),
 ]
 
-ACTIVE_CRICKET = {}  # chat_id -> {'category': str, 'question': str, 'name': str, 'answers': list, 'asked_at': float}
+ACTIVE_CRICKET = {}   # chat_id -> {'category': str, 'question': str, 'name': str, 'answers': list, 'asked_at': float}
+ASKED_QUIZ_HASHES = defaultdict(set)  # chat_id -> set of already asked question strings (no repeat!)
 CRICKET_LOCK = threading.Lock()
 
-def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
-    pool = HARD_QUIZ_BANK
-    if category_filter == 'cricket':
-        pool = [q for q in HARD_QUIZ_BANK if 'CRICKET' in q[0]]
-    elif category_filter == 'spiritual':
-        pool = [q for q in HARD_QUIZ_BANK if 'SPIRITUAL' in q[0]]
+def generate_ai_quiz_question(category_filter, asked_set):
+    # Generates unlimited brand-new questions using Groq if GROQ_API_KEY is available
+    raw_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY', '')
+    api_key = str(raw_key).strip().strip("'").strip('"')
+    if not api_key:
+        return None
+    try:
+        import urllib.request
+        cat_label = "🏏 HARD CRICKET QUIZ" if category_filter == 'cricket' else "🕉️ SPIRITUAL KNOWLEDGE QUIZ"
+        if category_filter == 'cricket':
+            topic_prompt = (
+                "Generate 1 unique, hard cricket trivia question in Hinglish (Hindi written in English script) with a 1 or 2 word exact answer (a cricketer name, stadium, or number). "
+                "Return ONLY valid JSON: {\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}"
+            )
+        else:
+            topic_prompt = (
+                "Generate 1 unique, deep Hindu spiritual trivia question in Hinglish (Hindi written in English script) about Radha Krishna, Ram Sita, Mahadev Parvati, Jagannath Ji, Ramayana, or Mahabharata with a 1 or 2 word exact answer. "
+                "Return ONLY valid JSON: {\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}"
+            )
+        payload = json.dumps({
+            'model': 'openai/gpt-oss-20b',
+            'messages': [
+                {'role': 'system', 'content': 'You output strictly valid JSON only. No markdown, no extra text.'},
+                {'role': 'user', 'content': topic_prompt}
+            ],
+            'max_tokens': 220,
+            'temperature': 0.9
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            'https://api.groq.com/openai/v1/chat/completions',
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+        raw_txt = res['choices'][0]['message']['content'].strip()
+        raw_txt = re.sub(r'^```(?:json)?|```$', '', raw_txt, flags=re.M).strip()
+        obj = json.loads(raw_txt)
+        q_txt = str(obj.get('question', '')).strip()
+        ans_txt = str(obj.get('answer', '')).strip()
+        aliases = [str(a).strip().lower() for a in obj.get('aliases', []) if str(a).strip()]
+        if ans_txt.lower() not in aliases:
+            aliases.append(ans_txt.lower())
+        if q_txt and ans_txt and q_txt not in asked_set:
+            return (cat_label, q_txt, ans_txt, aliases)
+    except Exception:
+        pass
+    return None
 
-    if not pool:
-        return
-    category, question, display_ans, answers = random.choice(pool)
+def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
+    if category_filter not in ('cricket', 'spiritual'):
+        category_filter = random.choice(['cricket', 'spiritual'])
+
     with CRICKET_LOCK:
+        asked = ASKED_QUIZ_HASHES[chat_id]
+        pool = [q for q in HARD_QUIZ_BANK if (category_filter == 'cricket' and 'CRICKET' in q[0]) or (category_filter == 'spiritual' and 'SPIRITUAL' in q[0])]
+        unasked_pool = [q for q in pool if q[1] not in asked]
+
+    chosen = None
+    # If all built-in questions in this category were already asked, try AI dynamic generator first
+    if not unasked_pool:
+        ai_q = generate_ai_quiz_question(category_filter, asked)
+        if ai_q:
+            chosen = ai_q
+        else:
+            # Reset history only after every single question has been played once
+            with CRICKET_LOCK:
+                for q in pool:
+                    ASKED_QUIZ_HASHES[chat_id].discard(q[1])
+                unasked_pool = list(pool)
+
+    if chosen is None:
+        # 40% chance to generate fresh AI question even mid-cycle so questions always feel brand new
+        if random.random() < 0.40:
+            ai_q = generate_ai_quiz_question(category_filter, asked)
+            if ai_q:
+                chosen = ai_q
+        if chosen is None:
+            chosen = random.choice(unasked_pool)
+
+    category, question, display_ans, answers = chosen
+    with CRICKET_LOCK:
+        ASKED_QUIZ_HASHES[chat_id].add(question)
         ACTIVE_CRICKET[chat_id] = {
             'category': category,
             'question': question,
@@ -2261,18 +2184,17 @@ def hourly_cricket_loop():
         except Exception:
             log.exception('2-hour quiz loop error')
 
-# ---------------- VISUAL 4-PLAYER LUDO GAME (/ludo) ----------------
+# ---------------- PREMIUM LUDO KING STYLE GAME (/ludo - SINGLE BOARD + DICE + MOVE BUTTONS) ----------------
 LUDO_GAMES = {}
 LUDO_LOCK = threading.Lock()
 
 LUDO_COLORS = [
-    {'key': 'R', 'name': 'Red', 'emoji': '🔴', 'rgb': (220, 48, 48), 'light': (255, 210, 210), 'start': 0},
-    {'key': 'G', 'name': 'Green', 'emoji': '🟢', 'rgb': (38, 175, 72), 'light': (205, 248, 215), 'start': 13},
-    {'key': 'Y', 'name': 'Yellow', 'emoji': '🟡', 'rgb': (235, 185, 20), 'light': (255, 245, 195), 'start': 26},
-    {'key': 'B', 'name': 'Blue', 'emoji': '🔵', 'rgb': (45, 115, 235), 'light': (205, 228, 255), 'start': 39},
+    {'key': 'R', 'name': 'Red', 'emoji': '🔴', 'rgb': (218, 41, 41), 'dark': (155, 20, 20), 'light': (255, 214, 214), 'start': 0},
+    {'key': 'G', 'name': 'Green', 'emoji': '🟢', 'rgb': (34, 168, 68), 'dark': (18, 115, 42), 'light': (206, 248, 216), 'start': 13},
+    {'key': 'Y', 'name': 'Yellow', 'emoji': '🟡', 'rgb': (236, 182, 16), 'dark': (175, 130, 5), 'light': (255, 246, 198), 'start': 26},
+    {'key': 'B', 'name': 'Blue', 'emoji': '🔵', 'rgb': (38, 110, 232), 'dark': (20, 70, 175), 'light': (206, 228, 255), 'start': 39},
 ]
 
-# 52-step outer track coordinates on a 15x15 Ludo grid (row, col)
 LUDO_TRACK_COORDS = [
     (6,1),(6,2),(6,3),(6,4),(6,5),
     (5,6),(4,6),(3,6),(2,6),(1,6),(0,6),
@@ -2288,7 +2210,6 @@ LUDO_TRACK_COORDS = [
     (7,0),(6,0)
 ]
 
-# Home stretch coordinates (5 steps leading to center, steps 51..55; step 56 = finished)
 LUDO_HOME_COORDS = {
     'R': [(7,1),(7,2),(7,3),(7,4),(7,5)],
     'G': [(1,7),(2,7),(3,7),(4,7),(5,7)],
@@ -2296,29 +2217,44 @@ LUDO_HOME_COORDS = {
     'B': [(13,7),(12,7),(11,7),(10,7),(9,7)],
 }
 
-# Yard positions for 4 tokens per color (when pos == -1)
 LUDO_YARD_COORDS = {
-    'R': [(2,2),(2,3),(3,2),(3,3)],
-    'G': [(2,11),(2,12),(3,11),(3,12)],
-    'Y': [(11,11),(11,12),(12,11),(12,12)],
-    'B': [(11,2),(11,3),(12,2),(12,3)],
+    'R': [(1,1),(1,4),(4,1),(4,4)],
+    'G': [(1,10),(1,13),(4,10),(4,13)],
+    'Y': [(10,10),(10,13),(13,10),(13,13)],
+    'B': [(10,1),(10,4),(13,1),(13,4)],
 }
 
 LUDO_SAFE_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
 
+def draw_star_shape(d, cx, cy, r_outer, r_inner, fill_col, outline_col):
+    import math
+    pts = []
+    for i in range(10):
+        ang = math.radians(-90 + i * 36)
+        rad = r_outer if i % 2 == 0 else r_inner
+        pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+    d.polygon(pts, fill=fill_col, outline=outline_col)
+
 def render_ludo_board(game):
-    cell = 40
-    size = cell * 15
-    img = Image.new('RGB', (size, size), (250, 250, 250))
+    # Classic Ludo King style board with wooden frame, 3D shadows, stars, arrows & glossy tokens
+    cell = 44
+    pad = 16
+    board_px = cell * 15
+    size = board_px + pad * 2
+    img = Image.new('RGB', (size, size), (92, 52, 24))
     d = ImageDraw.Draw(img)
 
-    # Draw grid cells
+    # Outer wooden bevel border
+    d.rounded_rectangle([4, 4, size - 4, size - 4], radius=22, fill=(125, 72, 34), outline=(58, 30, 12), width=4)
+    d.rectangle([pad - 3, pad - 3, pad + board_px + 3, pad + board_px + 3], fill=(45, 45, 50))
+
+    # Draw crisp white track cells
     for r in range(15):
         for c in range(15):
-            x0, y0 = c * cell, r * cell
-            d.rectangle([x0, y0, x0 + cell, y0 + cell], fill=(255, 255, 255), outline=(195, 195, 205), width=1)
+            x0, y0 = pad + c * cell, pad + r * cell
+            d.rectangle([x0, y0, x0 + cell, y0 + cell], fill=(252, 252, 254), outline=(185, 190, 200), width=1)
 
-    # Draw 4 colored corner yards
+    # Draw 4 Classic Corner Houses with circular token sockets
     yards = [
         (0, 0, LUDO_COLORS[0]),
         (0, 9, LUDO_COLORS[1]),
@@ -2326,35 +2262,50 @@ def render_ludo_board(game):
         (9, 0, LUDO_COLORS[3]),
     ]
     for r0, c0, col in yards:
-        x0, y0 = c0 * cell, r0 * cell
-        x1, y1 = (c0 + 6) * cell, (r0 + 6) * cell
-        d.rectangle([x0, y0, x1, y1], fill=col['rgb'], outline=(40, 40, 40), width=2)
-        d.rounded_rectangle([x0 + 28, y0 + 28, x1 - 28, y1 - 28], radius=18, fill=(255, 255, 255), outline=(60, 60, 60), width=2)
+        x0, y0 = pad + c0 * cell, pad + r0 * cell
+        x1, y1 = pad + (c0 + 6) * cell, pad + (r0 + 6) * cell
+        d.rectangle([x0, y0, x1, y1], fill=col['rgb'], outline=(35, 35, 40), width=2)
+        # Inner white rounded box
+        ix0, iy0, ix1, iy1 = x0 + 30, y0 + 30, x1 - 30, y1 - 30
+        d.rounded_rectangle([ix0 + 3, iy0 + 3, ix1 + 3, iy1 + 3], radius=22, fill=col['dark'])
+        d.rounded_rectangle([ix0, iy0, ix1, iy1], radius=22, fill=(255, 255, 255), outline=(45, 45, 50), width=2)
+        # 4 Token base circles inside yard
+        for yr, yc in LUDO_YARD_COORDS[col['key']]:
+            scx = pad + yc * cell + cell // 2
+            scy = pad + yr * cell + cell // 2
+            d.ellipse([scx - 16, scy - 16, scx + 16, scy + 16], fill=col['light'], outline=col['rgb'], width=3)
 
-    # Color home stretches & start squares
+    # Color home paths & starting squares
     for col in LUDO_COLORS:
         k = col['key']
         sr, sc = LUDO_TRACK_COORDS[col['start']]
-        d.rectangle([sc * cell, sr * cell, (sc + 1) * cell, (sr + 1) * cell], fill=col['rgb'], outline=(120, 120, 120), width=1)
+        sx0, sy0 = pad + sc * cell, pad + sr * cell
+        d.rectangle([sx0, sy0, sx0 + cell, sy0 + cell], fill=col['rgb'], outline=(90, 90, 95), width=1)
         for hr, hc in LUDO_HOME_COORDS[k]:
-            d.rectangle([hc * cell, hr * cell, (hc + 1) * cell, (hr + 1) * cell], fill=col['light'], outline=(160, 160, 160), width=1)
+            hx0, hy0 = pad + hc * cell, pad + hr * cell
+            d.rectangle([hx0, hy0, hx0 + cell, hy0 + cell], fill=col['rgb'], outline=(235, 235, 240), width=1)
 
-    # Mark safe stars
+    # Draw Safe Star icons on all 8 safe squares
     for idx in LUDO_SAFE_INDICES:
         sr, sc = LUDO_TRACK_COORDS[idx]
-        cx, cy = sc * cell + cell // 2, sr * cell + cell // 2
-        d.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], outline=(110, 110, 110), width=2)
+        cx = pad + sc * cell + cell // 2
+        cy = pad + sr * cell + cell // 2
+        is_start = any(idx == c['start'] for c in LUDO_COLORS)
+        star_fill = (255, 255, 255) if is_start else (215, 220, 230)
+        star_out = (60, 60, 65) if is_start else (120, 125, 135)
+        draw_star_shape(d, cx, cy, 13, 6, star_fill, star_out)
 
-    # Draw Center 3x3 Home Triangles
-    cx0, cy0 = 6 * cell, 6 * cell
-    cx1, cy1 = 9 * cell, 9 * cell
-    midx, midy = size // 2, size // 2
-    d.polygon([(cx0, cy0), (cx0, cy1), (midx, midy)], fill=LUDO_COLORS[0]['rgb'], outline=(40, 40, 40))
-    d.polygon([(cx0, cy0), (cx1, cy0), (midx, midy)], fill=LUDO_COLORS[1]['rgb'], outline=(40, 40, 40))
-    d.polygon([(cx1, cy0), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[2]['rgb'], outline=(40, 40, 40))
-    d.polygon([(cx0, cy1), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[3]['rgb'], outline=(40, 40, 40))
+    # Draw Center 3x3 Crown Home Triangles
+    cx0, cy0 = pad + 6 * cell, pad + 6 * cell
+    cx1, cy1 = pad + 9 * cell, pad + 9 * cell
+    midx, midy = pad + board_px // 2, pad + board_px // 2
+    d.polygon([(cx0, cy0), (cx0, cy1), (midx, midy)], fill=LUDO_COLORS[0]['rgb'], outline=(35, 35, 40))
+    d.polygon([(cx0, cy0), (cx1, cy0), (midx, midy)], fill=LUDO_COLORS[1]['rgb'], outline=(35, 35, 40))
+    d.polygon([(cx1, cy0), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[2]['rgb'], outline=(35, 35, 40))
+    d.polygon([(cx0, cy1), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[3]['rgb'], outline=(35, 35, 40))
+    d.ellipse([midx - 16, midy - 16, midx + 16, midy + 16], fill=(255, 235, 130), outline=(60, 45, 15), width=2)
 
-    # Draw Tokens for all joined players
+    # Collect all active tokens on board
     cell_occupants = defaultdict(list)
     for p in game['players']:
         ckey = p['color']['key']
@@ -2362,32 +2313,38 @@ def render_ludo_board(game):
         for tidx, pos in enumerate(p['tokens']):
             if pos == -1:
                 yr, yc = LUDO_YARD_COORDS[ckey][tidx]
-                cell_occupants[(yr, yc)].append((p['color']['rgb'], tidx + 1))
+                cell_occupants[(yr, yc)].append((p['color'], tidx + 1))
             elif 0 <= pos <= 50:
                 g_idx = (c_start + pos) % 52
                 tr, tc = LUDO_TRACK_COORDS[g_idx]
-                cell_occupants[(tr, tc)].append((p['color']['rgb'], tidx + 1))
+                cell_occupants[(tr, tc)].append((p['color'], tidx + 1))
             elif 51 <= pos <= 55:
                 hr, hc = LUDO_HOME_COORDS[ckey][pos - 51]
-                cell_occupants[(hr, hc)].append((p['color']['rgb'], tidx + 1))
+                cell_occupants[(hr, hc)].append((p['color'], tidx + 1))
             else:
-                # Finished token near center
-                cell_occupants[(7, 7)].append((p['color']['rgb'], tidx + 1))
+                cell_occupants[(7, 7)].append((p['color'], tidx + 1))
 
     try:
         tfont = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 15)
     except OSError:
         tfont = ImageFont.load_default()
 
+    # Draw glossy 3D Ludo Goti (tokens) with number badge
     for (r, c), items in cell_occupants.items():
-        base_x, base_y = c * cell + cell // 2, r * cell + cell // 2
-        offsets = [(0, 0)] if len(items) == 1 else [(-8, -8), (8, -8), (-8, 8), (8, 8)]
-        for i, (rgb, num) in enumerate(items[:4]):
+        base_x = pad + c * cell + cell // 2
+        base_y = pad + r * cell + cell // 2
+        offsets = [(0, 0)] if len(items) == 1 else [(-9, -9), (9, -9), (-9, 9), (9, 9)]
+        for i, (col, num) in enumerate(items[:4]):
             ox, oy = offsets[i]
-            rad = 13 if len(items) == 1 else 9
+            rad = 15 if len(items) == 1 else 10
             px, py = base_x + ox, base_y + oy
-            d.ellipse([px - rad, py - rad, px + rad, py + rad], fill=rgb, outline=(255, 255, 255), width=2)
-            d.ellipse([px - rad - 1, py - rad - 1, px + rad + 1, py + rad + 1], outline=(20, 20, 20), width=1)
+            # Drop shadow
+            d.ellipse([px - rad + 2, py - rad + 3, px + rad + 2, py + rad + 3], fill=(40, 40, 45))
+            # Outer dark rim + main body
+            d.ellipse([px - rad, py - rad, px + rad, py + rad], fill=col['rgb'], outline=(255, 255, 255), width=2)
+            d.ellipse([px - rad - 1, py - rad - 1, px + rad + 1, py + rad + 1], outline=col['dark'], width=2)
+            # Glossy highlight
+            d.ellipse([px - rad // 2, py - rad + 3, px, py - 2], fill=(255, 255, 255))
             if len(items) == 1:
                 d.text((px - 4, py - 8), str(num), font=tfont, fill=(255, 255, 255))
 
@@ -2406,8 +2363,8 @@ def ludo_valid_moves(player, dice_val):
             moves.append(i)
     return moves
 
-def ludo_caption(game):
-    lines = ["🎲 <b>MISHRA LUDO CHAMPIONSHIP</b> 🎲\n"]
+def ludo_board_caption(game):
+    lines = ["👑 <b>MISHRA LUDO KING</b> 👑\n"]
     for idx, p in enumerate(game['players']):
         done_cnt = sum(1 for t in p['tokens'] if t == 56)
         out_cnt = sum(1 for t in p['tokens'] if 0 <= t < 56)
@@ -2418,16 +2375,16 @@ def ludo_caption(game):
         lines.append(f"\n📝 <i>{esc(game['last_log'])}</i>")
 
     if not game['started']:
-        lines.append("\n⏳ <i>Players join karein (Max 4). Start dabakar khel shuru karein!</i>")
+        lines.append("\n⏳ <i>2 se 4 players join karein, phir Start Match dabayein!</i>")
     elif game['over']:
         w = game['winner']
-        lines.append(f"\n🏆 <b>WINNER:</b> {w['color']['emoji']} <a href=\"tg://user?id={w['uid']}\">{esc(w['name'])}</a> (+100 Coins) 🎉")
+        lines.append(f"\n🏆 <b>CHAMPION:</b> {w['color']['emoji']} <a href=\"tg://user?id={w['uid']}\">{esc(w['name'])}</a> (+100 Coins) 🎉")
     else:
         cur = game['players'][game['turn_idx']]
         if game['awaiting_move']:
             lines.append(f"\n🎲 <b>Dice: {game['dice']}</b> — {cur['color']['emoji']} {esc(cur['name'])}, apni goti chunein:")
         else:
-            lines.append(f"\n👉 {cur['color']['emoji']} <b>{esc(cur['name'])}</b> ki baari hai — Roll Dice dabayein!")
+            lines.append(f"\n👉 {cur['color']['emoji']} <b>{esc(cur['name'])}</b> ki baari — niche 🎲 Roll Dice dabayein!")
     return "\n".join(lines)
 
 def ludo_keyboard(gid, game):
@@ -2443,34 +2400,47 @@ def ludo_keyboard(gid, game):
 
     cur = game['players'][game['turn_idx']]
     if not game['awaiting_move']:
-        kb.add(types.InlineKeyboardButton(f"🎲 Roll Dice ({cur['color']['emoji']} {cur['name'][:12]})", callback_data=f'ludo:{gid}:roll'))
+        kb.add(types.InlineKeyboardButton(f"🎲 Roll Dice ({cur['color']['emoji']} {cur['name'][:14]})", callback_data=f'ludo:{gid}:roll'))
     else:
         valid = ludo_valid_moves(cur, game['dice'])
         btns = []
         for tidx in valid:
             pos = cur['tokens'][tidx]
-            desc = "Open" if pos == -1 else f"Step {pos}→{pos + game['dice']}"
+            desc = "Bahar Nikalein" if pos == -1 else f"Step {pos}→{pos + game['dice']}"
             btns.append(types.InlineKeyboardButton(f"{cur['color']['emoji']} Goti #{tidx+1} ({desc})", callback_data=f'ludo:{gid}:mv:{tidx}'))
         if btns:
             kb.add(*btns)
     return kb
 
-def send_or_update_ludo(chat_id, gid, game, msg_id=None):
-    board_img = render_ludo_board(game)
-    cap = ludo_caption(game)
+def send_or_update_ludo(chat_id, gid, game, update_image=True):
+    # Updates the SINGLE fixed Ludo board message in-place without spamming new photos!
+    cap = ludo_board_caption(game)
     kb = ludo_keyboard(gid, game)
+    msg_id = game.get('board_msg_id')
+
     if msg_id:
+        if update_image:
+            try:
+                board_img = render_ludo_board(game)
+                bot.edit_message_media(
+                    media=types.InputMediaPhoto(board_img, caption=cap, parse_mode='HTML'),
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    reply_markup=kb
+                )
+                return
+            except Exception:
+                pass
+        # If only caption/buttons changed (e.g. Dice rolled, waiting for Goti pick), edit caption only so image doesn't flicker!
         try:
-            bot.edit_message_media(
-                media=types.InputMediaPhoto(board_img, caption=cap, parse_mode='HTML'),
-                chat_id=chat_id,
-                message_id=msg_id,
-                reply_markup=kb
-            )
+            bot.edit_message_caption(caption=cap, chat_id=chat_id, message_id=msg_id, parse_mode='HTML', reply_markup=kb)
             return
         except Exception:
             pass
-    bot.send_photo(chat_id, board_img, caption=cap, reply_markup=kb)
+
+    board_img = render_ludo_board(game)
+    sent = bot.send_photo(chat_id, board_img, caption=cap, reply_markup=kb)
+    game['board_msg_id'] = sent.message_id
 
 @bot.message_handler(commands=['ludo'])
 def ludo_cmd(m):
@@ -2479,6 +2449,7 @@ def ludo_cmd(m):
     gid = uuid.uuid4().hex[:8]
     game = {
         'chat_id': m.chat.id,
+        'board_msg_id': None,
         'players': [{
             'uid': m.from_user.id,
             'name': user_name(m.from_user),
@@ -2502,7 +2473,7 @@ def ludo_cmd(m):
                 LUDO_GAMES.pop(k, None)
         LUDO_GAMES[gid] = game
 
-    send_or_update_ludo(m.chat.id, gid, game)
+    send_or_update_ludo(m.chat.id, gid, game, update_image=True)
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('ludo:'))
 def ludo_callback(call):
@@ -2522,6 +2493,7 @@ def ludo_callback(call):
             return bot.answer_callback_query(call.id, '🏁 Match khatam ho chuka hai!')
 
         game['ts'] = time.time()
+        game['board_msg_id'] = call.message.message_id
 
         if action == 'join':
             if game['started']:
@@ -2539,7 +2511,7 @@ def ludo_callback(call):
             })
             game['last_log'] = f"{uname} ({col['emoji']} {col['name']}) ne join kiya!"
             bot.answer_callback_query(call.id, f"✅ Aap {col['emoji']} {col['name']} team se join hue!")
-            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+            send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
             return
 
         if action == 'start':
@@ -2553,7 +2525,7 @@ def ludo_callback(call):
             game['turn_idx'] = 0
             game['last_log'] = "Match shuru ho gaya! Red ki pehli baari."
             bot.answer_callback_query(call.id, '🚀 Ludo Match Started!')
-            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
             return
 
         cur = game['players'][game['turn_idx']]
@@ -2575,7 +2547,7 @@ def ludo_callback(call):
                 game['last_log'] = f"{cur['name']} ke lagatar teen 6 aaye — turn cancel!"
                 game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
                 bot.answer_callback_query(call.id, '🎲 Teen 6! Turn skip ho gaya!')
-                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
                 return
 
             valid = ludo_valid_moves(cur, dval)
@@ -2583,10 +2555,9 @@ def ludo_callback(call):
                 game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya — koi valid chal nahi."
                 game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
                 bot.answer_callback_query(call.id, f'🎲 {dval} aaya — koi move available nahi!')
-                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
                 return
 
-            # If only 1 valid move exists, auto-play it for fast smooth gameplay
             if len(valid) == 1:
                 action = 'mv'
                 parts = ['ludo', gid, 'mv', str(valid[0])]
@@ -2594,7 +2565,8 @@ def ludo_callback(call):
                 game['awaiting_move'] = True
                 game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya! Goti chunein."
                 bot.answer_callback_query(call.id, f'🎲 {dval} aaya! Apni goti chunein.')
-                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                # Do NOT re-upload board image while waiting for token pick; only update caption/buttons!
+                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
                 return
 
         if action == 'mv' and len(parts) == 4:
@@ -2611,7 +2583,6 @@ def ludo_callback(call):
             bonus_turn = (dval == 6)
             cut_msg = ""
 
-            # Check capture on outer track (0..50) if not a safe star square
             if 0 <= new_pos <= 50:
                 g_idx = (cur['color']['start'] + new_pos) % 52
                 if g_idx not in LUDO_SAFE_INDICES:
@@ -2632,7 +2603,6 @@ def ludo_callback(call):
 
             game['last_log'] = f"{cur['name']} (🎲 {dval}): Goti #{tidx+1} chali.{cut_msg}"
 
-            # Check win condition (all 4 tokens at 56)
             if all(p_pos == 56 for p_pos in cur['tokens']):
                 game['over'] = True
                 game['winner'] = cur
@@ -2640,7 +2610,7 @@ def ludo_callback(call):
                     c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (cur['uid'], ''))
                     c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (cur['uid'],))
                 bot.answer_callback_query(call.id, '🏆 MUBARAK HO! Aap Ludo Jeet Gaye!')
-                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
                 return
 
             if not bonus_turn:
@@ -2648,7 +2618,8 @@ def ludo_callback(call):
                 game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
 
             bot.answer_callback_query(call.id, f'🎲 {dval} moved!')
-            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+            # Update the single board image cleanly when a token actually moves
+            send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])

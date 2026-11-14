@@ -281,8 +281,10 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /chatbot on|off — smart auto-reply (text, sticker & GIF) when called
 /whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
 /ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
+/ludo — 🎲 4-Player Ludo board game with visual board (+100 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
-/cricket /guess /spiritual — hard cricket & spiritual quiz (auto every 8 hrs & awards coins)
+/cricket [on|off] — hard cricket quiz & auto toggle
+/spiritual [on|off] — spiritual quiz (Radha Krishna, Ram Sita, Mahadev, Jagannath ji) & auto toggle
 
 <b>Optional AI</b>
 /ai question — needs GROQ_API_KEY
@@ -1925,7 +1927,7 @@ def stylish_cmd(m):
         return bot.reply_to(m, 'Usage: <code>/style Your Name</code> (tap any generated style to copy!)')
     bot.reply_to(m, f'✨ <b>Stylish Designs (Tap to copy):</b>\n\n{stylize_text(src[:80])}')
 
-# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (8-HOUR AUTO + /cricket + /spiritual) ----------------
+# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (2-HOUR AUTO + SEPARATE ON/OFF) ----------------
 HARD_QUIZ_BANK = [
     # --- HARD CRICKET QUESTIONS ---
     (
@@ -1948,7 +1950,7 @@ HARD_QUIZ_BANK = [
     ),
     (
         "🏏 HARD CRICKET QUIZ",
-        "ODI cricket mein pehli double century (200*) kis stadium mein aur kis khiladi ne banayi thi?",
+        "ODI cricket mein pehli double century (200*) kis Bharatiya khiladi ne banayi thi?",
         "Sachin Tendulkar",
         ["sachin tendulkar", "sachin"]
     ),
@@ -2019,10 +2021,106 @@ HARD_QUIZ_BANK = [
         ["chris gayle", "gayle"]
     ),
 
-    # --- SPIRITUAL & SANATAN DHARMA QUESTIONS ---
+    # --- SPIRITUAL QUESTIONS (RADHA KRISHNA, RAM SITA, MAHADEV PARVATI, RAMAYANA, MAHABHARATA, JAGANNATH JI) ---
     (
         "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Shrimad Bhagavad Gita mein kul kitne adhyay (chapters) hain? (Number ya shabd likhein)",
+        "Radha Rani ke pita ji ka kya naam tha jo Barsana ke mukhiya the?",
+        "Vrishabhanu",
+        ["vrishabhanu", "vrishbhanu", "bhanu"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Shri Krishna ki bansuri (flute) ka kya naam tha jiski dhun par Radha Rani aur Gopiyan mugdh ho jaati thi?",
+        "Mahananda",
+        ["mahananda", "murali", "bansuri"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Radha Rani ki mata ji ka kya naam tha?",
+        "Kirtida",
+        ["kirtida", "keertida"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Vrindavan mein jis pavitra sthan par Bhagwan Shri Krishna aur Radha Rani ne Maharaas rachaya tha, us van ka kya naam hai?",
+        "Nidhivan",
+        ["nidhivan", "nidhi van"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Puri (Odisha) mein sthit Jagannath Mandir mein Bhagwan Jagannath ke saath unke bade bhai aur behen kaun virajman hain? (Kisi ek ka naam likhein)",
+        "Balabhadra aur Subhadra",
+        ["balabhadra", "subhadra", "balram", "balabhadra aur subhadra"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Jagannath ji ki vishav-prasiddh Rath Yatra har saal kis Hindu mahine mein nikali jaati hai?",
+        "Ashadha",
+        ["ashadha", "ashadh", "asadha"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Jagannath Puri ke rath 'Nandighosha' (Bhagwan Jagannath ji ke rath) mein kul kitne pahiye (wheels) hote hain?",
+        "16",
+        ["16", "sixteen", "solah"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Mata Sita ke pita Raja Janak kis rajya ke raja the?",
+        "Mithila (Videha)",
+        ["mithila", "videha", "janakpur"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Ramayana mein Mata Sita ka haran karne ke baad Ravan ne unhe Lanka ke kis vatika mein rakha tha?",
+        "Ashok Vatika",
+        ["ashok vatika", "ashoka vatika"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Shri Ram ke vanvas jaane par unki khadau (paduka) rakh kar 14 varsh tak Ayodhya ka rajya kisne sambhala tha?",
+        "Bharat",
+        ["bharat", "bharata"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Ramayana mein Lanka jaane ke liye samudra par pul (Ram Setu) banane wale do vanar bhai kaun the?",
+        "Nal aur Neel",
+        ["nal", "neel", "nal neel", "nal aur neel"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Shiv ke dhanush ka kya naam tha jise Shri Ram ne Sita Swayamvar mein toda tha?",
+        "Pinaka",
+        ["pinaka", "pinak"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Mata Parvati ke pita ka kya naam tha jo parvatraj the?",
+        "Himavan",
+        ["himavan", "himavat", "himalaya"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Mahadev aur Mata Parvati ke bade putra (Devtaon ke Senapati) ka kya naam hai?",
+        "Kartikeya",
+        ["kartikeya", "murugan", "skanda", "subrahmanya"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Shiv ke 12 Jyotirlingon mein se pratham (pehla) Jyotirling kaunsa hai?",
+        "Somnath",
+        ["somnath"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Bhagwan Mahadev ke gale mein lipte hue nagraj ka kya naam hai?",
+        "Vasuki",
+        ["vasuki"]
+    ),
+    (
+        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
+        "Shrimad Bhagavad Gita mein kul kitne adhyay (chapters) hain?",
         "18",
         ["18", "eighteen", "atharah"]
     ),
@@ -2034,81 +2132,15 @@ HARD_QUIZ_BANK = [
     ),
     (
         "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Ramayana mein Lanka jaane ke liye samudra par pul (Ram Setu) banane wale do vanar bhai kaun the? (Kisi ek ka naam likhein)",
-        "Nal aur Neel",
-        ["nal", "neel", "nal neel", "nal aur neel", "nala", "nila"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Shiv ke dhanush ka kya naam tha jise Shri Ram ne Sita Swayamvar mein toda tha?",
-        "Pinaka",
-        ["pinaka", "pinak"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
         "Arjun ke dhanush ka kya naam tha jo unhe Agni Dev se prapt hua tha?",
         "Gandiva",
         ["gandiva", "gandiv"]
     ),
     (
         "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Sanatan Dharma mein kul kitne Mahapuran hain? (Number likhein)",
-        "18",
-        ["18", "eighteen", "atharah"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Char Dham yatra mein Uttar disha (Uttarakhand) mein sthit Bhagwan Vishnu ka dham kaunsa hai?",
-        "Badrinath",
-        ["badrinath", "badri"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Shiv ke 12 Jyotirlingon mein se pratham (pehla) Jyotirling kaunsa mana jata hai?",
-        "Somnath",
-        ["somnath"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Mahabharata ki rachna kis Maharishi ne ki thi (jise Lord Ganesha ne likha tha)?",
+        "Mahabharata ki rachna kis Maharishi ne ki thi (jise Shri Ganesh ji ne likha tha)?",
         "Ved Vyas",
-        ["ved vyas", "vyas", "maharishi ved vyas", "krishna dvaipayana"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Samudra Manthan ke samay parvat ko mathne ke liye kis nagraj ko rassi (rope) banaya gaya tha?",
-        "Vasuki",
-        ["vasuki"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagwan Vishnu ke 10 avataron mein se 'Narasimha' avatar ne kis asur ka vadh kiya tha?",
-        "Hiranyakashipu",
-        ["hiranyakashipu", "hiranyakashyap"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Hanuman Chalisa ki rachna kis mahan sant aur kavi ne ki thi?",
-        "Tulsidas",
-        ["tulsidas", "goswami tulsidas"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Ganga nadi ko swarg se prithvi par laane ke liye kis raja ne kathor tapasya ki thi?",
-        "Bhagirath",
-        ["bhagirath", "raja bhagirath"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Bhagavad Gita mein Arjun ke rath ke sarathi kaun the?",
-        "Shri Krishna",
-        ["krishna", "shri krishna", "lord krishna", "sri krishna"]
-    ),
-    (
-        "🕉️ SPIRITUAL KNOWLEDGE QUIZ",
-        "Surya Dev ke rath mein kul kitne ghode (horses) jude hote hain? (Number likhein)",
-        "7",
-        ["7", "seven", "saat"]
+        ["ved vyas", "vyas", "maharishi ved vyas"]
     ),
 ]
 
@@ -2122,6 +2154,8 @@ def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
     elif category_filter == 'spiritual':
         pool = [q for q in HARD_QUIZ_BANK if 'SPIRITUAL' in q[0]]
 
+    if not pool:
+        return
     category, question, display_ans, answers = random.choice(pool)
     with CRICKET_LOCK:
         ACTIVE_CRICKET[chat_id] = {
@@ -2180,29 +2214,441 @@ def check_cricket_answer(m):
 @bot.message_handler(commands=['cricket', 'guess'])
 def cricket_cmd(m):
     if not group(m):
-        return bot.reply_to(m, 'Use /cricket in a group to play!')
+        return bot.reply_to(m, 'Use /cricket in a group!')
+    parts = (m.text or '').split()
+    if len(parts) > 1 and parts[1].lower() in ('on', 'off'):
+        if not need_admin(m):
+            return
+        val = parts[1].lower()
+        set_setting(m.chat.id, 'cricket_auto', val)
+        return bot.reply_to(m, f'🏏 Auto Cricket Quiz (every 2 hrs) <b>{"enabled" if val=="on" else "disabled"}</b>.')
     post_cricket_question(m.chat.id, reply_to_id=m.message_id, category_filter='cricket')
 
 @bot.message_handler(commands=['spiritual', 'gyan'])
 def spiritual_cmd(m):
     if not group(m):
-        return bot.reply_to(m, 'Use /spiritual in a group to play!')
+        return bot.reply_to(m, 'Use /spiritual in a group!')
+    parts = (m.text or '').split()
+    if len(parts) > 1 and parts[1].lower() in ('on', 'off'):
+        if not need_admin(m):
+            return
+        val = parts[1].lower()
+        set_setting(m.chat.id, 'spiritual_auto', val)
+        return bot.reply_to(m, f'🕉️ Auto Spiritual Quiz (every 2 hrs) <b>{"enabled" if val=="on" else "disabled"}</b>.')
     post_cricket_question(m.chat.id, reply_to_id=m.message_id, category_filter='spiritual')
 
 def hourly_cricket_loop():
-    # Runs every 8 hours (28800 seconds) and posts a random Hard Cricket or Spiritual quiz
+    # Runs every 2 hours (7200 seconds) and checks cricket_auto and spiritual_auto separately
     while True:
-        time.sleep(28800)
+        time.sleep(7200)
         try:
             with DB_LOCK, connect() as c:
                 chats = c.execute('SELECT DISTINCT chat_id FROM stats WHERE chat_id < 0').fetchall()
             for r in chats:
                 cid = r['chat_id']
-                if setting(cid, 'cricket_game', 'on') == 'on':
-                    post_cricket_question(cid)
-                    time.sleep(1.5)
+                c_on = setting(cid, 'cricket_auto', 'on') == 'on'
+                s_on = setting(cid, 'spiritual_auto', 'on') == 'on'
+                if not c_on and not s_on:
+                    continue
+                if c_on and s_on:
+                    cat = random.choice(['cricket', 'spiritual'])
+                elif c_on:
+                    cat = 'cricket'
+                else:
+                    cat = 'spiritual'
+                post_cricket_question(cid, category_filter=cat)
+                time.sleep(1.5)
         except Exception:
-            log.exception('8-hour quiz loop error')
+            log.exception('2-hour quiz loop error')
+
+# ---------------- VISUAL 4-PLAYER LUDO GAME (/ludo) ----------------
+LUDO_GAMES = {}
+LUDO_LOCK = threading.Lock()
+
+LUDO_COLORS = [
+    {'key': 'R', 'name': 'Red', 'emoji': '🔴', 'rgb': (220, 48, 48), 'light': (255, 210, 210), 'start': 0},
+    {'key': 'G', 'name': 'Green', 'emoji': '🟢', 'rgb': (38, 175, 72), 'light': (205, 248, 215), 'start': 13},
+    {'key': 'Y', 'name': 'Yellow', 'emoji': '🟡', 'rgb': (235, 185, 20), 'light': (255, 245, 195), 'start': 26},
+    {'key': 'B', 'name': 'Blue', 'emoji': '🔵', 'rgb': (45, 115, 235), 'light': (205, 228, 255), 'start': 39},
+]
+
+# 52-step outer track coordinates on a 15x15 Ludo grid (row, col)
+LUDO_TRACK_COORDS = [
+    (6,1),(6,2),(6,3),(6,4),(6,5),
+    (5,6),(4,6),(3,6),(2,6),(1,6),(0,6),
+    (0,7),(0,8),
+    (1,8),(2,8),(3,8),(4,8),(5,8),
+    (6,9),(6,10),(6,11),(6,12),(6,13),(6,14),
+    (7,14),(8,14),
+    (8,13),(8,12),(8,11),(8,10),(8,9),
+    (9,8),(10,8),(11,8),(12,8),(13,8),(14,8),
+    (14,7),(14,6),
+    (13,6),(12,6),(11,6),(10,6),(9,6),
+    (8,5),(8,4),(8,3),(8,2),(8,1),(8,0),
+    (7,0),(6,0)
+]
+
+# Home stretch coordinates (5 steps leading to center, steps 51..55; step 56 = finished)
+LUDO_HOME_COORDS = {
+    'R': [(7,1),(7,2),(7,3),(7,4),(7,5)],
+    'G': [(1,7),(2,7),(3,7),(4,7),(5,7)],
+    'Y': [(7,13),(7,12),(7,11),(7,10),(7,9)],
+    'B': [(13,7),(12,7),(11,7),(10,7),(9,7)],
+}
+
+# Yard positions for 4 tokens per color (when pos == -1)
+LUDO_YARD_COORDS = {
+    'R': [(2,2),(2,3),(3,2),(3,3)],
+    'G': [(2,11),(2,12),(3,11),(3,12)],
+    'Y': [(11,11),(11,12),(12,11),(12,12)],
+    'B': [(11,2),(11,3),(12,2),(12,3)],
+}
+
+LUDO_SAFE_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
+
+def render_ludo_board(game):
+    cell = 40
+    size = cell * 15
+    img = Image.new('RGB', (size, size), (250, 250, 250))
+    d = ImageDraw.Draw(img)
+
+    # Draw grid cells
+    for r in range(15):
+        for c in range(15):
+            x0, y0 = c * cell, r * cell
+            d.rectangle([x0, y0, x0 + cell, y0 + cell], fill=(255, 255, 255), outline=(195, 195, 205), width=1)
+
+    # Draw 4 colored corner yards
+    yards = [
+        (0, 0, LUDO_COLORS[0]),
+        (0, 9, LUDO_COLORS[1]),
+        (9, 9, LUDO_COLORS[2]),
+        (9, 0, LUDO_COLORS[3]),
+    ]
+    for r0, c0, col in yards:
+        x0, y0 = c0 * cell, r0 * cell
+        x1, y1 = (c0 + 6) * cell, (r0 + 6) * cell
+        d.rectangle([x0, y0, x1, y1], fill=col['rgb'], outline=(40, 40, 40), width=2)
+        d.rounded_rectangle([x0 + 28, y0 + 28, x1 - 28, y1 - 28], radius=18, fill=(255, 255, 255), outline=(60, 60, 60), width=2)
+
+    # Color home stretches & start squares
+    for col in LUDO_COLORS:
+        k = col['key']
+        sr, sc = LUDO_TRACK_COORDS[col['start']]
+        d.rectangle([sc * cell, sr * cell, (sc + 1) * cell, (sr + 1) * cell], fill=col['rgb'], outline=(120, 120, 120), width=1)
+        for hr, hc in LUDO_HOME_COORDS[k]:
+            d.rectangle([hc * cell, hr * cell, (hc + 1) * cell, (hr + 1) * cell], fill=col['light'], outline=(160, 160, 160), width=1)
+
+    # Mark safe stars
+    for idx in LUDO_SAFE_INDICES:
+        sr, sc = LUDO_TRACK_COORDS[idx]
+        cx, cy = sc * cell + cell // 2, sr * cell + cell // 2
+        d.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], outline=(110, 110, 110), width=2)
+
+    # Draw Center 3x3 Home Triangles
+    cx0, cy0 = 6 * cell, 6 * cell
+    cx1, cy1 = 9 * cell, 9 * cell
+    midx, midy = size // 2, size // 2
+    d.polygon([(cx0, cy0), (cx0, cy1), (midx, midy)], fill=LUDO_COLORS[0]['rgb'], outline=(40, 40, 40))
+    d.polygon([(cx0, cy0), (cx1, cy0), (midx, midy)], fill=LUDO_COLORS[1]['rgb'], outline=(40, 40, 40))
+    d.polygon([(cx1, cy0), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[2]['rgb'], outline=(40, 40, 40))
+    d.polygon([(cx0, cy1), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[3]['rgb'], outline=(40, 40, 40))
+
+    # Draw Tokens for all joined players
+    cell_occupants = defaultdict(list)
+    for p in game['players']:
+        ckey = p['color']['key']
+        c_start = p['color']['start']
+        for tidx, pos in enumerate(p['tokens']):
+            if pos == -1:
+                yr, yc = LUDO_YARD_COORDS[ckey][tidx]
+                cell_occupants[(yr, yc)].append((p['color']['rgb'], tidx + 1))
+            elif 0 <= pos <= 50:
+                g_idx = (c_start + pos) % 52
+                tr, tc = LUDO_TRACK_COORDS[g_idx]
+                cell_occupants[(tr, tc)].append((p['color']['rgb'], tidx + 1))
+            elif 51 <= pos <= 55:
+                hr, hc = LUDO_HOME_COORDS[ckey][pos - 51]
+                cell_occupants[(hr, hc)].append((p['color']['rgb'], tidx + 1))
+            else:
+                # Finished token near center
+                cell_occupants[(7, 7)].append((p['color']['rgb'], tidx + 1))
+
+    try:
+        tfont = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 15)
+    except OSError:
+        tfont = ImageFont.load_default()
+
+    for (r, c), items in cell_occupants.items():
+        base_x, base_y = c * cell + cell // 2, r * cell + cell // 2
+        offsets = [(0, 0)] if len(items) == 1 else [(-8, -8), (8, -8), (-8, 8), (8, 8)]
+        for i, (rgb, num) in enumerate(items[:4]):
+            ox, oy = offsets[i]
+            rad = 13 if len(items) == 1 else 9
+            px, py = base_x + ox, base_y + oy
+            d.ellipse([px - rad, py - rad, px + rad, py + rad], fill=rgb, outline=(255, 255, 255), width=2)
+            d.ellipse([px - rad - 1, py - rad - 1, px + rad + 1, py + rad + 1], outline=(20, 20, 20), width=1)
+            if len(items) == 1:
+                d.text((px - 4, py - 8), str(num), font=tfont, fill=(255, 255, 255))
+
+    out = io.BytesIO()
+    out.name = 'ludo_board.png'
+    img.save(out, 'PNG')
+    out.seek(0)
+    return out
+
+def ludo_valid_moves(player, dice_val):
+    moves = []
+    for i, pos in enumerate(player['tokens']):
+        if pos == -1 and dice_val == 6:
+            moves.append(i)
+        elif 0 <= pos < 56 and pos + dice_val <= 56:
+            moves.append(i)
+    return moves
+
+def ludo_caption(game):
+    lines = ["🎲 <b>MISHRA LUDO CHAMPIONSHIP</b> 🎲\n"]
+    for idx, p in enumerate(game['players']):
+        done_cnt = sum(1 for t in p['tokens'] if t == 56)
+        out_cnt = sum(1 for t in p['tokens'] if 0 <= t < 56)
+        turn_mark = " 👈 <b>(TURN)</b>" if (game['started'] and not game['over'] and idx == game['turn_idx']) else ""
+        lines.append(f"{p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a> — 🏠 {done_cnt}/4 | 🎯 {out_cnt}{turn_mark}")
+
+    if game['last_log']:
+        lines.append(f"\n📝 <i>{esc(game['last_log'])}</i>")
+
+    if not game['started']:
+        lines.append("\n⏳ <i>Players join karein (Max 4). Start dabakar khel shuru karein!</i>")
+    elif game['over']:
+        w = game['winner']
+        lines.append(f"\n🏆 <b>WINNER:</b> {w['color']['emoji']} <a href=\"tg://user?id={w['uid']}\">{esc(w['name'])}</a> (+100 Coins) 🎉")
+    else:
+        cur = game['players'][game['turn_idx']]
+        if game['awaiting_move']:
+            lines.append(f"\n🎲 <b>Dice: {game['dice']}</b> — {cur['color']['emoji']} {esc(cur['name'])}, apni goti chunein:")
+        else:
+            lines.append(f"\n👉 {cur['color']['emoji']} <b>{esc(cur['name'])}</b> ki baari hai — Roll Dice dabayein!")
+    return "\n".join(lines)
+
+def ludo_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    if game['over']:
+        return kb
+    if not game['started']:
+        if len(game['players']) < 4:
+            kb.add(types.InlineKeyboardButton('➕ Join Ludo Game', callback_data=f'ludo:{gid}:join'))
+        if len(game['players']) >= 2:
+            kb.add(types.InlineKeyboardButton('🚀 Start Match', callback_data=f'ludo:{gid}:start'))
+        return kb
+
+    cur = game['players'][game['turn_idx']]
+    if not game['awaiting_move']:
+        kb.add(types.InlineKeyboardButton(f"🎲 Roll Dice ({cur['color']['emoji']} {cur['name'][:12]})", callback_data=f'ludo:{gid}:roll'))
+    else:
+        valid = ludo_valid_moves(cur, game['dice'])
+        btns = []
+        for tidx in valid:
+            pos = cur['tokens'][tidx]
+            desc = "Open" if pos == -1 else f"Step {pos}→{pos + game['dice']}"
+            btns.append(types.InlineKeyboardButton(f"{cur['color']['emoji']} Goti #{tidx+1} ({desc})", callback_data=f'ludo:{gid}:mv:{tidx}'))
+        if btns:
+            kb.add(*btns)
+    return kb
+
+def send_or_update_ludo(chat_id, gid, game, msg_id=None):
+    board_img = render_ludo_board(game)
+    cap = ludo_caption(game)
+    kb = ludo_keyboard(gid, game)
+    if msg_id:
+        try:
+            bot.edit_message_media(
+                media=types.InputMediaPhoto(board_img, caption=cap, parse_mode='HTML'),
+                chat_id=chat_id,
+                message_id=msg_id,
+                reply_markup=kb
+            )
+            return
+        except Exception:
+            pass
+    bot.send_photo(chat_id, board_img, caption=cap, reply_markup=kb)
+
+@bot.message_handler(commands=['ludo'])
+def ludo_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /ludo in a group to play with friends!')
+    gid = uuid.uuid4().hex[:8]
+    game = {
+        'chat_id': m.chat.id,
+        'players': [{
+            'uid': m.from_user.id,
+            'name': user_name(m.from_user),
+            'color': LUDO_COLORS[0],
+            'tokens': [-1, -1, -1, -1]
+        }],
+        'started': False,
+        'over': False,
+        'winner': None,
+        'turn_idx': 0,
+        'dice': 0,
+        'awaiting_move': False,
+        'six_streak': 0,
+        'last_log': f"{user_name(m.from_user)} ne Ludo table banaya!",
+        'ts': time.time()
+    }
+    with LUDO_LOCK:
+        now = time.time()
+        for k in list(LUDO_GAMES.keys()):
+            if now - LUDO_GAMES[k]['ts'] > 3600:
+                LUDO_GAMES.pop(k, None)
+        LUDO_GAMES[gid] = game
+
+    send_or_update_ludo(m.chat.id, gid, game)
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('ludo:'))
+def ludo_callback(call):
+    parts = call.data.split(':')
+    if len(parts) < 3:
+        return
+    gid = parts[1]
+    action = parts[2]
+    uid = call.from_user.id
+    uname = user_name(call.from_user)
+
+    with LUDO_LOCK:
+        game = LUDO_GAMES.get(gid)
+        if not game:
+            return bot.answer_callback_query(call.id, '⚠️ Yeh Ludo game expire ho chuka hai. /ludo se naya start karein.', show_alert=True)
+        if game['over']:
+            return bot.answer_callback_query(call.id, '🏁 Match khatam ho chuka hai!')
+
+        game['ts'] = time.time()
+
+        if action == 'join':
+            if game['started']:
+                return bot.answer_callback_query(call.id, 'Match pehle hi start ho chuka hai!', show_alert=True)
+            if any(p['uid'] == uid for p in game['players']):
+                return bot.answer_callback_query(call.id, 'Aap pehle se game mein hain!', show_alert=True)
+            if len(game['players']) >= 4:
+                return bot.answer_callback_query(call.id, 'Table full hai (4/4 players)!', show_alert=True)
+            col = LUDO_COLORS[len(game['players'])]
+            game['players'].append({
+                'uid': uid,
+                'name': uname,
+                'color': col,
+                'tokens': [-1, -1, -1, -1]
+            })
+            game['last_log'] = f"{uname} ({col['emoji']} {col['name']}) ne join kiya!"
+            bot.answer_callback_query(call.id, f"✅ Aap {col['emoji']} {col['name']} team se join hue!")
+            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+            return
+
+        if action == 'start':
+            if game['started']:
+                return bot.answer_callback_query(call.id, 'Match already running!')
+            if not any(p['uid'] == uid for p in game['players']):
+                return bot.answer_callback_query(call.id, 'Sirf joined players hi match start kar sakte hain!', show_alert=True)
+            if len(game['players']) < 2:
+                return bot.answer_callback_query(call.id, 'Kam se kam 2 players chahiye!', show_alert=True)
+            game['started'] = True
+            game['turn_idx'] = 0
+            game['last_log'] = "Match shuru ho gaya! Red ki pehli baari."
+            bot.answer_callback_query(call.id, '🚀 Ludo Match Started!')
+            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+            return
+
+        cur = game['players'][game['turn_idx']]
+        if uid != cur['uid']:
+            return bot.answer_callback_query(call.id, f"⛔ Abhi {cur['color']['emoji']} {cur['name']} ki baari hai!", show_alert=True)
+
+        if action == 'roll':
+            if game['awaiting_move']:
+                return bot.answer_callback_query(call.id, 'Pehle apni goti chunein!', show_alert=True)
+            dval = random.randint(1, 6)
+            game['dice'] = dval
+            if dval == 6:
+                game['six_streak'] += 1
+            else:
+                game['six_streak'] = 0
+
+            if game['six_streak'] >= 3:
+                game['six_streak'] = 0
+                game['last_log'] = f"{cur['name']} ke lagatar teen 6 aaye — turn cancel!"
+                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
+                bot.answer_callback_query(call.id, '🎲 Teen 6! Turn skip ho gaya!')
+                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                return
+
+            valid = ludo_valid_moves(cur, dval)
+            if not valid:
+                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya — koi valid chal nahi."
+                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
+                bot.answer_callback_query(call.id, f'🎲 {dval} aaya — koi move available nahi!')
+                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                return
+
+            # If only 1 valid move exists, auto-play it for fast smooth gameplay
+            if len(valid) == 1:
+                action = 'mv'
+                parts = ['ludo', gid, 'mv', str(valid[0])]
+            else:
+                game['awaiting_move'] = True
+                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya! Goti chunein."
+                bot.answer_callback_query(call.id, f'🎲 {dval} aaya! Apni goti chunein.')
+                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                return
+
+        if action == 'mv' and len(parts) == 4:
+            tidx = int(parts[3])
+            dval = game['dice']
+            valid = ludo_valid_moves(cur, dval)
+            if tidx not in valid:
+                return bot.answer_callback_query(call.id, 'Invalid token move!', show_alert=True)
+
+            old_pos = cur['tokens'][tidx]
+            new_pos = 0 if old_pos == -1 else old_pos + dval
+            cur['tokens'][tidx] = new_pos
+            game['awaiting_move'] = False
+            bonus_turn = (dval == 6)
+            cut_msg = ""
+
+            # Check capture on outer track (0..50) if not a safe star square
+            if 0 <= new_pos <= 50:
+                g_idx = (cur['color']['start'] + new_pos) % 52
+                if g_idx not in LUDO_SAFE_INDICES:
+                    for opp in game['players']:
+                        if opp['uid'] == cur['uid']:
+                            continue
+                        for o_tidx, o_pos in enumerate(opp['tokens']):
+                            if 0 <= o_pos <= 50:
+                                o_gidx = (opp['color']['start'] + o_pos) % 52
+                                if o_gidx == g_idx:
+                                    opp['tokens'][o_tidx] = -1
+                                    bonus_turn = True
+                                    cut_msg = f" 💥 {opp['name']} ki goti kaat di!"
+
+            if new_pos == 56:
+                bonus_turn = True
+                cut_msg += " 🏠 Goti Home pahunch gayi!"
+
+            game['last_log'] = f"{cur['name']} (🎲 {dval}): Goti #{tidx+1} chali.{cut_msg}"
+
+            # Check win condition (all 4 tokens at 56)
+            if all(p_pos == 56 for p_pos in cur['tokens']):
+                game['over'] = True
+                game['winner'] = cur
+                with DB_LOCK, connect() as c:
+                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (cur['uid'], ''))
+                    c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (cur['uid'],))
+                bot.answer_callback_query(call.id, '🏆 MUBARAK HO! Aap Ludo Jeet Gaye!')
+                send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
+                return
+
+            if not bonus_turn:
+                game['six_streak'] = 0
+                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
+
+            bot.answer_callback_query(call.id, f'🎲 {dval} moved!')
+            send_or_update_ludo(call.message.chat.id, gid, game, call.message.message_id)
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])

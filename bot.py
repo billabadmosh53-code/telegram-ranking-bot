@@ -2184,7 +2184,7 @@ def hourly_cricket_loop():
         except Exception:
             log.exception('2-hour quiz loop error')
 
-# ---------------- PREMIUM LUDO KING STYLE GAME (/ludo - SINGLE BOARD + DICE + MOVE BUTTONS) ----------------
+# ---------------- PREMIUM LUDO KING STYLE GAME (/ludo - CRYSTAL CLEAR BUTTONS & SINGLE PERMANENT BOARD) ----------------
 LUDO_GAMES = {}
 LUDO_LOCK = threading.Lock()
 
@@ -2225,6 +2225,7 @@ LUDO_YARD_COORDS = {
 }
 
 LUDO_SAFE_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
+DICE_FACES = {1: '1️⃣', 2: '2️⃣', 3: '3️⃣', 4: '4️⃣', 5: '5️⃣', 6: '6️⃣'}
 
 def draw_star_shape(d, cx, cy, r_outer, r_inner, fill_col, outline_col):
     import math
@@ -2236,7 +2237,6 @@ def draw_star_shape(d, cx, cy, r_outer, r_inner, fill_col, outline_col):
     d.polygon(pts, fill=fill_col, outline=outline_col)
 
 def render_ludo_board(game):
-    # Classic Ludo King style board with wooden frame, 3D shadows, stars, arrows & glossy tokens
     cell = 44
     pad = 16
     board_px = cell * 15
@@ -2244,17 +2244,14 @@ def render_ludo_board(game):
     img = Image.new('RGB', (size, size), (92, 52, 24))
     d = ImageDraw.Draw(img)
 
-    # Outer wooden bevel border
     d.rounded_rectangle([4, 4, size - 4, size - 4], radius=22, fill=(125, 72, 34), outline=(58, 30, 12), width=4)
     d.rectangle([pad - 3, pad - 3, pad + board_px + 3, pad + board_px + 3], fill=(45, 45, 50))
 
-    # Draw crisp white track cells
     for r in range(15):
         for c in range(15):
             x0, y0 = pad + c * cell, pad + r * cell
             d.rectangle([x0, y0, x0 + cell, y0 + cell], fill=(252, 252, 254), outline=(185, 190, 200), width=1)
 
-    # Draw 4 Classic Corner Houses with circular token sockets
     yards = [
         (0, 0, LUDO_COLORS[0]),
         (0, 9, LUDO_COLORS[1]),
@@ -2265,17 +2262,14 @@ def render_ludo_board(game):
         x0, y0 = pad + c0 * cell, pad + r0 * cell
         x1, y1 = pad + (c0 + 6) * cell, pad + (r0 + 6) * cell
         d.rectangle([x0, y0, x1, y1], fill=col['rgb'], outline=(35, 35, 40), width=2)
-        # Inner white rounded box
         ix0, iy0, ix1, iy1 = x0 + 30, y0 + 30, x1 - 30, y1 - 30
         d.rounded_rectangle([ix0 + 3, iy0 + 3, ix1 + 3, iy1 + 3], radius=22, fill=col['dark'])
         d.rounded_rectangle([ix0, iy0, ix1, iy1], radius=22, fill=(255, 255, 255), outline=(45, 45, 50), width=2)
-        # 4 Token base circles inside yard
         for yr, yc in LUDO_YARD_COORDS[col['key']]:
             scx = pad + yc * cell + cell // 2
             scy = pad + yr * cell + cell // 2
             d.ellipse([scx - 16, scy - 16, scx + 16, scy + 16], fill=col['light'], outline=col['rgb'], width=3)
 
-    # Color home paths & starting squares
     for col in LUDO_COLORS:
         k = col['key']
         sr, sc = LUDO_TRACK_COORDS[col['start']]
@@ -2285,7 +2279,6 @@ def render_ludo_board(game):
             hx0, hy0 = pad + hc * cell, pad + hr * cell
             d.rectangle([hx0, hy0, hx0 + cell, hy0 + cell], fill=col['rgb'], outline=(235, 235, 240), width=1)
 
-    # Draw Safe Star icons on all 8 safe squares
     for idx in LUDO_SAFE_INDICES:
         sr, sc = LUDO_TRACK_COORDS[idx]
         cx = pad + sc * cell + cell // 2
@@ -2295,7 +2288,6 @@ def render_ludo_board(game):
         star_out = (60, 60, 65) if is_start else (120, 125, 135)
         draw_star_shape(d, cx, cy, 13, 6, star_fill, star_out)
 
-    # Draw Center 3x3 Crown Home Triangles
     cx0, cy0 = pad + 6 * cell, pad + 6 * cell
     cx1, cy1 = pad + 9 * cell, pad + 9 * cell
     midx, midy = pad + board_px // 2, pad + board_px // 2
@@ -2305,7 +2297,6 @@ def render_ludo_board(game):
     d.polygon([(cx0, cy1), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[3]['rgb'], outline=(35, 35, 40))
     d.ellipse([midx - 16, midy - 16, midx + 16, midy + 16], fill=(255, 235, 130), outline=(60, 45, 15), width=2)
 
-    # Collect all active tokens on board
     cell_occupants = defaultdict(list)
     for p in game['players']:
         ckey = p['color']['key']
@@ -2329,7 +2320,6 @@ def render_ludo_board(game):
     except OSError:
         tfont = ImageFont.load_default()
 
-    # Draw glossy 3D Ludo Goti (tokens) with number badge
     for (r, c), items in cell_occupants.items():
         base_x = pad + c * cell + cell // 2
         base_y = pad + r * cell + cell // 2
@@ -2338,12 +2328,9 @@ def render_ludo_board(game):
             ox, oy = offsets[i]
             rad = 15 if len(items) == 1 else 10
             px, py = base_x + ox, base_y + oy
-            # Drop shadow
             d.ellipse([px - rad + 2, py - rad + 3, px + rad + 2, py + rad + 3], fill=(40, 40, 45))
-            # Outer dark rim + main body
             d.ellipse([px - rad, py - rad, px + rad, py + rad], fill=col['rgb'], outline=(255, 255, 255), width=2)
             d.ellipse([px - rad - 1, py - rad - 1, px + rad + 1, py + rad + 1], outline=col['dark'], width=2)
-            # Glossy highlight
             d.ellipse([px - rad // 2, py - rad + 3, px, py - 2], fill=(255, 255, 255))
             if len(items) == 1:
                 d.text((px - 4, py - 8), str(num), font=tfont, fill=(255, 255, 255))
@@ -2364,38 +2351,52 @@ def ludo_valid_moves(player, dice_val):
     return moves
 
 def ludo_board_caption(game):
-    lines = ["👑 <b>MISHRA LUDO KING</b> 👑\n"]
+    lines = ["👑 <b>MISHRA LUDO KING</b> 👑"]
+    if not game['started']:
+        lines.append(f"👥 <b>Players Joined ({len(game['players'])}/4):</b>")
+        for p in game['players']:
+            lines.append(f"  {p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a> ({p['color']['name']})")
+        lines.append("\n📌 <i>2, 3, ya 4 players join kar sakte hain!</i>")
+        lines.append("👇 <i>Niche 'Join Game' dabayein aur 'Start Match' se khel shuru karein:</i>")
+        return "\n".join(lines)
+
+    lines.append("")
     for idx, p in enumerate(game['players']):
         done_cnt = sum(1 for t in p['tokens'] if t == 56)
-        out_cnt = sum(1 for t in p['tokens'] if 0 <= t < 56)
-        turn_mark = " 👈 <b>(TURN)</b>" if (game['started'] and not game['over'] and idx == game['turn_idx']) else ""
-        lines.append(f"{p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a> — 🏠 {done_cnt}/4 | 🎯 {out_cnt}{turn_mark}")
+        yard_cnt = sum(1 for t in p['tokens'] if t == -1)
+        track_cnt = 4 - done_cnt - yard_cnt
+        turn_tag = "  ◀️ <b>[TURN]</b>" if (not game['over'] and idx == game['turn_idx']) else ""
+        lines.append(f"{p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a>: 🏠{done_cnt} | 🎯{track_cnt} | 🔒{yard_cnt}{turn_tag}")
 
     if game['last_log']:
-        lines.append(f"\n📝 <i>{esc(game['last_log'])}</i>")
+        lines.append(f"\n📢 <b>Update:</b> {esc(game['last_log'])}")
 
-    if not game['started']:
-        lines.append("\n⏳ <i>2 se 4 players join karein, phir Start Match dabayein!</i>")
-    elif game['over']:
+    if game['over']:
         w = game['winner']
         lines.append(f"\n🏆 <b>CHAMPION:</b> {w['color']['emoji']} <a href=\"tg://user?id={w['uid']}\">{esc(w['name'])}</a> (+100 Coins) 🎉")
     else:
         cur = game['players'][game['turn_idx']]
         if game['awaiting_move']:
-            lines.append(f"\n🎲 <b>Dice: {game['dice']}</b> — {cur['color']['emoji']} {esc(cur['name'])}, apni goti chunein:")
+            d_icon = DICE_FACES.get(game['dice'], str(game['dice']))
+            lines.append(f"\n🎲 <b>Dice Aaya: {d_icon} ({game['dice']})</b>")
+            lines.append(f"👇 {cur['color']['emoji']} <b>{esc(cur['name'])}</b>, apni goti ka button dabayein:")
         else:
-            lines.append(f"\n👉 {cur['color']['emoji']} <b>{esc(cur['name'])}</b> ki baari — niche 🎲 Roll Dice dabayein!")
+            lines.append(f"\n👉 <b>Ab Baari Hai:</b> {cur['color']['emoji']} <b>{esc(cur['name'])}</b>")
+            lines.append("👇 <i>Niche '🎲 Roll Dice' button dabayein:</i>")
     return "\n".join(lines)
 
 def ludo_keyboard(gid, game):
     kb = types.InlineKeyboardMarkup(row_width=2)
     if game['over']:
+        kb.add(types.InlineKeyboardButton('🔄 Play New Ludo', callback_data=f'ludo:{gid}:rematch'))
         return kb
+
     if not game['started']:
         if len(game['players']) < 4:
-            kb.add(types.InlineKeyboardButton('➕ Join Ludo Game', callback_data=f'ludo:{gid}:join'))
+            next_col = LUDO_COLORS[len(game['players'])]
+            kb.add(types.InlineKeyboardButton(f"➕ Join ({next_col['emoji']} {next_col['name']})", callback_data=f'ludo:{gid}:join'))
         if len(game['players']) >= 2:
-            kb.add(types.InlineKeyboardButton('🚀 Start Match', callback_data=f'ludo:{gid}:start'))
+            kb.add(types.InlineKeyboardButton(f"▶️ Start Match ({len(game['players'])} Players)", callback_data=f'ludo:{gid}:start'))
         return kb
 
     cur = game['players'][game['turn_idx']]
@@ -2406,14 +2407,19 @@ def ludo_keyboard(gid, game):
         btns = []
         for tidx in valid:
             pos = cur['tokens'][tidx]
-            desc = "Bahar Nikalein" if pos == -1 else f"Step {pos}→{pos + game['dice']}"
-            btns.append(types.InlineKeyboardButton(f"{cur['color']['emoji']} Goti #{tidx+1} ({desc})", callback_data=f'ludo:{gid}:mv:{tidx}'))
-        if btns:
-            kb.add(*btns)
+            if pos == -1:
+                label = f"{cur['color']['emoji']} Goti {tidx+1}: Bahar Nikalein"
+            elif pos + game['dice'] == 56:
+                label = f"{cur['color']['emoji']} Goti {tidx+1}: 🏠 Home Pahunchayein"
+            else:
+                label = f"{cur['color']['emoji']} Goti {tidx+1}: +{game['dice']} Step Chalein"
+            btns.append(types.InlineKeyboardButton(label, callback_data=f'ludo:{gid}:mv:{tidx}'))
+        for b in btns:
+            kb.add(b)
     return kb
 
 def send_or_update_ludo(chat_id, gid, game, update_image=True):
-    # Updates the SINGLE fixed Ludo board message in-place without spamming new photos!
+    # Keeps ONE single permanent photo message and updates only its media/caption in place
     cap = ludo_board_caption(game)
     kb = ludo_keyboard(gid, game)
     msg_id = game.get('board_msg_id')
@@ -2431,7 +2437,6 @@ def send_or_update_ludo(chat_id, gid, game, update_image=True):
                 return
             except Exception:
                 pass
-        # If only caption/buttons changed (e.g. Dice rolled, waiting for Goti pick), edit caption only so image doesn't flicker!
         try:
             bot.edit_message_caption(caption=cap, chat_id=chat_id, message_id=msg_id, parse_mode='HTML', reply_markup=kb)
             return
@@ -2489,6 +2494,33 @@ def ludo_callback(call):
         game = LUDO_GAMES.get(gid)
         if not game:
             return bot.answer_callback_query(call.id, '⚠️ Yeh Ludo game expire ho chuka hai. /ludo se naya start karein.', show_alert=True)
+
+        if action == 'rematch':
+            new_gid = uuid.uuid4().hex[:8]
+            new_game = {
+                'chat_id': call.message.chat.id,
+                'board_msg_id': call.message.message_id,
+                'players': [{
+                    'uid': uid,
+                    'name': uname,
+                    'color': LUDO_COLORS[0],
+                    'tokens': [-1, -1, -1, -1]
+                }],
+                'started': False,
+                'over': False,
+                'winner': None,
+                'turn_idx': 0,
+                'dice': 0,
+                'awaiting_move': False,
+                'six_streak': 0,
+                'last_log': f"{uname} ne naya Ludo table banaya!",
+                'ts': time.time()
+            }
+            LUDO_GAMES[new_gid] = new_game
+            bot.answer_callback_query(call.id, '🔄 Naya Ludo Table Ready!')
+            send_or_update_ludo(call.message.chat.id, new_gid, new_game, update_image=True)
+            return
+
         if game['over']:
             return bot.answer_callback_query(call.id, '🏁 Match khatam ho chuka hai!')
 
@@ -2499,7 +2531,7 @@ def ludo_callback(call):
             if game['started']:
                 return bot.answer_callback_query(call.id, 'Match pehle hi start ho chuka hai!', show_alert=True)
             if any(p['uid'] == uid for p in game['players']):
-                return bot.answer_callback_query(call.id, 'Aap pehle se game mein hain!', show_alert=True)
+                return bot.answer_callback_query(call.id, 'Aap pehle se game mein join hain!', show_alert=True)
             if len(game['players']) >= 4:
                 return bot.answer_callback_query(call.id, 'Table full hai (4/4 players)!', show_alert=True)
             col = LUDO_COLORS[len(game['players'])]
@@ -2509,9 +2541,10 @@ def ludo_callback(call):
                 'color': col,
                 'tokens': [-1, -1, -1, -1]
             })
-            game['last_log'] = f"{uname} ({col['emoji']} {col['name']}) ne join kiya!"
+            game['last_log'] = f"{uname} ({col['emoji']} {col['name']}) join ho gaye!"
             bot.answer_callback_query(call.id, f"✅ Aap {col['emoji']} {col['name']} team se join hue!")
-            send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
+            # Update only caption & buttons on join so the board photo stays rock solid!
+            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
             return
 
         if action == 'start':
@@ -2523,8 +2556,8 @@ def ludo_callback(call):
                 return bot.answer_callback_query(call.id, 'Kam se kam 2 players chahiye!', show_alert=True)
             game['started'] = True
             game['turn_idx'] = 0
-            game['last_log'] = "Match shuru ho gaya! Red ki pehli baari."
-            bot.answer_callback_query(call.id, '🚀 Ludo Match Started!')
+            game['last_log'] = f"Match shuru! {game['players'][0]['name']} ({game['players'][0]['color']['emoji']}) ki pehli baari."
+            bot.answer_callback_query(call.id, '▶️ Ludo Match Started!')
             send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
             return
 
@@ -2552,22 +2585,18 @@ def ludo_callback(call):
 
             valid = ludo_valid_moves(cur, dval)
             if not valid:
-                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya — koi valid chal nahi."
+                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya — koi goti nahi chal sakti."
                 game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
-                bot.answer_callback_query(call.id, f'🎲 {dval} aaya — koi move available nahi!')
+                bot.answer_callback_query(call.id, f'🎲 {dval} aaya — koi move nahi!')
                 send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
                 return
 
-            if len(valid) == 1:
-                action = 'mv'
-                parts = ['ludo', gid, 'mv', str(valid[0])]
-            else:
-                game['awaiting_move'] = True
-                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya! Goti chunein."
-                bot.answer_callback_query(call.id, f'🎲 {dval} aaya! Apni goti chunein.')
-                # Do NOT re-upload board image while waiting for token pick; only update caption/buttons!
-                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
-                return
+            # Always let the player tap their Goti button clearly so they see what dice they rolled!
+            game['awaiting_move'] = True
+            game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya!"
+            bot.answer_callback_query(call.id, f'🎲 {dval} aaya! Niche goti ka button dabayein.')
+            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
+            return
 
         if action == 'mv' and len(parts) == 4:
             tidx = int(parts[3])
@@ -2601,7 +2630,8 @@ def ludo_callback(call):
                 bonus_turn = True
                 cut_msg += " 🏠 Goti Home pahunch gayi!"
 
-            game['last_log'] = f"{cur['name']} (🎲 {dval}): Goti #{tidx+1} chali.{cut_msg}"
+            action_desc = "bahar nikali" if old_pos == -1 else f"{dval} step chali"
+            game['last_log'] = f"{cur['name']} (🎲 {dval}): Goti {tidx+1} {action_desc}.{cut_msg}"
 
             if all(p_pos == 56 for p_pos in cur['tokens']):
                 game['over'] = True
@@ -2617,8 +2647,8 @@ def ludo_callback(call):
                 game['six_streak'] = 0
                 game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
 
-            bot.answer_callback_query(call.id, f'🎲 {dval} moved!')
-            # Update the single board image cleanly when a token actually moves
+            bot.answer_callback_query(call.id, f'✅ Goti {tidx+1} moved!')
+            # Only update the board image in-place when a token moves on the board!
             send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------

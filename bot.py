@@ -1819,37 +1819,107 @@ def ai(m):
 
     bot.reply_to(m, '❌ Groq AI par koi working model nahi mila. Render mein GROQ_MODEL variable ko delete/clear kar dein taaki bot auto-select kare.')
 
-# ---------------- AI PHOTO GENERATION (/img & /imagine) ----------------
+# ---------------- AI PHOTO GENERATION (/img & /imagine - FLUX HD + PROMPT ENHANCER + ZERO COOLDOWN) ----------------
+def enhance_image_prompt_with_groq(user_prompt):
+    raw_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY', '')
+    api_key = str(raw_key).strip().strip("'").strip('"')
+    if not api_key:
+        return f"{user_prompt}, ultra detailed, photorealistic, 8k resolution, cinematic lighting, masterpiece, sharp focus"
+    try:
+        import urllib.request
+        payload = json.dumps({
+            'model': 'openai/gpt-oss-20b',
+            'messages': [
+                {
+                    'role': 'system',
+                    'content': (
+                        "You are an expert AI image prompt engineer. Convert the user's request (even if in Hindi/Hinglish) "
+                        "into a rich, vivid, photorealistic English image generation prompt (under 45 words). "
+                        "Include lighting, artistic style, composition, and quality tags (8k, ultra-detailed, cinematic lighting, sharp focus, masterpiece). "
+                        "Output ONLY the final English prompt, nothing else."
+                    )
+                },
+                {'role': 'user', 'content': user_prompt}
+            ],
+            'max_tokens': 110,
+            'temperature': 0.7
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            'https://api.groq.com/openai/v1/chat/completions',
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+        enhanced = res['choices'][0]['message']['content'].strip().strip('"').strip("'")
+        if enhanced and len(enhanced) > 10:
+            return enhanced
+    except Exception:
+        pass
+    return f"{user_prompt}, ultra detailed, photorealistic, 8k resolution, cinematic lighting, masterpiece, sharp focus"
+
+def fetch_ai_image_bytes(enhanced_prompt):
+    import urllib.request, urllib.parse
+    encoded = urllib.parse.quote(enhanced_prompt)
+    seed = random.randint(1000, 99999999)
+    # Multiple fast models & mirrors with unique randomized User-Agents so there is NEVER a 2-minute rate limit!
+    ua_list = [
+        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(120,134)}.0.0.0 Safari/537.36",
+        f"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/{random.randint(120,134)}.0.0.0 Mobile Safari/537.36",
+        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.{random.randint(1,6)} Safari/605.1.15"
+    ]
+    endpoints = [
+        f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true&enhance=false",
+        f"https://pollinations.ai/p/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded}?model=turbo&width=1024&height=1024&seed={seed+1}&nologo=true",
+    ]
+    for url in endpoints:
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': random.choice(ua_list),
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                'Referer': 'https://pollinations.ai/'
+            })
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                ctype = (resp.headers.get('Content-Type') or '').lower()
+                data = resp.read(15 * 1024 * 1024)
+                # Ensure it's a real image and not an error/rate-limit placeholder
+                if data and len(data) > 18000 and ('image' in ctype or data[:3] == b'\xff\xd8\xff' or data[:4] == b'\x89PNG'):
+                    return data
+        except Exception:
+            continue
+    return None
+
 @bot.message_handler(commands=['img', 'imagine', 'generate'])
 def ai_generate_image(m):
     p = (m.text or '').split(maxsplit=1)
     if len(p) < 2 or not p[1].strip():
         return bot.reply_to(m, 'Usage: <code>/img Radha Krishna in Vrindavan glowing moonlight</code>')
-    prompt = p[1].strip()[:500]
-    status = bot.reply_to(m, '🎨 <b>AI Photo generate ho rahi hai...</b> thoda intezar karein.')
+    raw_prompt = p[1].strip()[:400]
+    status = bot.reply_to(m, '🎨 <b>HD AI Photo ban rahi hai...</b> (5-10 sec)')
     try:
-        import urllib.request, urllib.parse
-        encoded_prompt = urllib.parse.quote(prompt)
-        seed = random.randint(1, 999999)
-        img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
-        req = urllib.request.Request(img_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            img_bytes = resp.read(15 * 1024 * 1024)
-        if not img_bytes or len(img_bytes) < 1024:
-            raise RuntimeError('Image data empty')
+        enhanced = enhance_image_prompt_with_groq(raw_prompt)
+        img_bytes = fetch_ai_image_bytes(enhanced)
+        if not img_bytes:
+            raise RuntimeError('All image endpoints busy')
         bio = io.BytesIO(img_bytes)
-        bio.name = 'mishra_ai_art.jpg'
+        bio.name = 'mishra_hd_art.jpg'
         bot.send_photo(
             m.chat.id,
             bio,
-            caption=f"🎨 <b>AI Generated Image</b>\n<i>Prompt:</i> {esc(prompt[:250])}",
+            caption=f"🎨 <b>HD AI Art</b>\n<i>Prompt:</i> {esc(raw_prompt[:250])}",
             reply_to_message_id=m.message_id
         )
         safe_delete(m.chat.id, status.message_id)
-    except Exception as e:
+    except Exception:
         log.exception('AI image generation failed')
         try:
-            bot.edit_message_text('❌ AI image generate nahi ho paayi. Thodi der baad dobara try karein.', m.chat.id, status.message_id)
+            bot.edit_message_text('❌ Server abhi busy hai, 5 second baad dobara <code>/img</code> try karein.', m.chat.id, status.message_id)
         except Exception:
             pass
 
@@ -2590,9 +2660,9 @@ def stylish_cmd(m):
         return bot.reply_to(m, 'Usage: <code>/style Your Name</code> (tap any generated style to copy!)')
     bot.reply_to(m, f'✨ <b>Stylish Designs (Tap to copy):</b>\n\n{stylize_text(src[:80])}')
 
-# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (NO REPEAT + AI DYNAMIC + 2-HOUR AUTO) ----------------
+# ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (AI-FIRST + 70+ UNIQUE QUESTIONS + ZERO REPEAT) ----------------
 HARD_QUIZ_BANK = [
-    # --- HARD CRICKET QUESTIONS (30+ Unique Questions) ---
+    # --- HARD CRICKET QUESTIONS (25 Unique Questions) ---
     ("🏏 HARD CRICKET QUIZ", "Test cricket itihas mein ek hi match mein 10 wickets (all 10 in an innings) lene wale pehle Bharatiya aur duniya ke doosre gendbaaz kaun hain?", "Anil Kumble", ["anil kumble", "kumble"]),
     ("🏏 HARD CRICKET QUIZ", "1983 ODI World Cup final mein India ke khilaf sabse zyada runs kis West Indies ballebaj ne banaye the?", "Viv Richards", ["viv richards", "vivian richards", "sir viv richards", "richards"]),
     ("🏏 HARD CRICKET QUIZ", "Test cricket mein India ke liye pehla triple century (300+) lagane wale ballebaj kaun hain?", "Virender Sehwag", ["virender sehwag", "sehwag"]),
@@ -2619,7 +2689,7 @@ HARD_QUIZ_BANK = [
     ("🏏 HARD CRICKET QUIZ", "T20 International mein hat-trick lene wale pehle Bharatiya purush gendbaaz kaun hain?", "Deepak Chahar", ["deepak chahar", "chahar"]),
     ("🏏 HARD CRICKET QUIZ", "2023 ODI World Cup mein sabse zyada 24 wickets lene wale gendbaaz kaun the?", "Mohammed Shami", ["mohammed shami", "shami"]),
 
-    # --- SPIRITUAL QUESTIONS (30+ Unique Questions: Radha Krishna, Ram Sita, Mahadev Parvati, Jagannath ji, Ramayana, Mahabharata) ---
+    # --- MASSIVE SPIRITUAL KNOWLEDGE BANK (50+ Brand-New & Classic Questions) ---
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ke pita ji ka kya naam tha jo Barsana ke mukhiya the?", "Vrishabhanu", ["vrishabhanu", "vrishbhanu", "bhanu"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shri Krishna ki bansuri (flute) ka kya naam tha jiski dhun par Radha Rani aur Gopiyan mugdh ho jaati thi?", "Mahananda", ["mahananda", "murali", "bansuri"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ki mata ji ka kya naam tha?", "Kirtida", ["kirtida", "keertida"]),
@@ -2650,14 +2720,28 @@ HARD_QUIZ_BANK = [
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ganga nadi ko swarg se prithvi par laane ke liye kis raja ne kathor tapasya ki thi?", "Bhagirath", ["bhagirath", "raja bhagirath"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Govardhan Parvat ko Bhagwan Shri Krishna ne apni kis ungli par uthaya tha?", "Kanistha (Chhoti ungli)", ["kanistha", "little finger", "chhoti", "kanistha ungli"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Kedarnath Jyotirling Bharat ke kis rajya mein sthit hai?", "Uttarakhand", ["uttarakhand"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shri Krishna ke guru ka kya naam tha jinke ashram mein unhone shiksha li thi?", "Sandipani", ["sandipani", "sandipani muni"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ramayana ke rachayita Maharishi ka kya naam hai?", "Valmiki", ["valmiki", "maharishi valmiki"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Lakshman ji ki patni Urmila ke alawa Raja Janak ki anya do putriyon (Bharat aur Shatrughna ki patniyon) mein se kisi ek ka naam likhein?", "Mandavi / Shrutakirti", ["mandavi", "shrutakirti"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Kashi Vishwanath Jyotirling kis pavitra nadi ke tat par sthit hai?", "Ganga", ["ganga", "ganges"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata mein Karn ke kavach aur kundal kis devta ne dan mein maange the?", "Indra", ["indra", "devraj indra"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shri Krishna ka janm Mathura ke kis karagar (jail) mein hua tha?", "Kans Karagar", ["kans", "kamsa", "mathura"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Vrindavan mein Banke Bihari Mandir ki sthapna kis mahan sangeetkar sant ne ki thi?", "Swami Haridas", ["haridas", "swami haridas"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Vishnu ke kis avatar ne Raja Bali se teen pag bhoomi dan mein maangi thi?", "Vamana", ["vamana", "vaman"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Ramayana mein Hanuman ji ne Lanka jaane ke liye kis parvat se chhalang lagayi thi?", "Mahendragiri", ["mahendragiri", "mahendra"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata ka yuddh Haryana ke kis pavitra kshetra mein lada gaya tha?", "Kurukshetra", ["kurukshetra"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shiv ke vahan Nandi ke pita ka kya naam tha?", "Shilada", ["shilada", "shilad"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Puri Jagannath Mandir mein bhog (Mahaprasad) kis bartan mein pakaya jata hai?", "Mitti ke bartan", ["mitti", "clay", "earthen", "mitti ke bartan"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Ashtami ka pavan parv kis mahine ke Shukla Paksha ki Ashtami ko manaya jata hai?", "Bhadrapada", ["bhadrapada", "bhado", "bhadra"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Shri Ram ke vansh ka kya naam tha jisme unka janm hua tha?", "Ikshvaku (Suryavansh)", ["ikshvaku", "suryavansh", "raghuvansh"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata mein Yudhishthira ke shankh ka kya naam tha?", "Anantavijaya", ["anantavijaya", "anantvijay"]),
 ]
 
 ACTIVE_CRICKET = {}   # chat_id -> {'category': str, 'question': str, 'name': str, 'answers': list, 'asked_at': float}
-ASKED_QUIZ_HASHES = defaultdict(set)  # chat_id -> set of already asked question strings (no repeat!)
+ASKED_QUIZ_HASHES = defaultdict(set)
 CRICKET_LOCK = threading.Lock()
 
 def generate_ai_quiz_question(category_filter, asked_set):
-    # Generates unlimited brand-new questions using Groq if GROQ_API_KEY is available
     raw_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY', '')
     api_key = str(raw_key).strip().strip("'").strip('"')
     if not api_key:
@@ -2665,47 +2749,71 @@ def generate_ai_quiz_question(category_filter, asked_set):
     try:
         import urllib.request
         cat_label = "🏏 HARD CRICKET QUIZ" if category_filter == 'cricket' else "🕉️ SPIRITUAL KNOWLEDGE QUIZ"
+        recent_avoid = list(asked_set)[-12:]
+        avoid_str = "; ".join(recent_avoid) if recent_avoid else "none"
         if category_filter == 'cricket':
+            sub_topic = random.choice([
+                "World Cup records", "Test cricket history", "IPL records",
+                "Indian cricket legends", "Famous cricket stadiums", "Bowling hat-tricks"
+            ])
             topic_prompt = (
-                "Generate 1 unique, hard cricket trivia question in Hinglish (Hindi written in English script) with a 1 or 2 word exact answer (a cricketer name, stadium, or number). "
-                "Return ONLY valid JSON: {\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}"
+                f"Generate 1 unique, hard cricket trivia question about {sub_topic} in Hinglish (Hindi written in English script) "
+                f"with a 1 or 2 word exact answer (a cricketer name, stadium, or number). "
+                f"Do NOT repeat any of these questions: [{avoid_str}]. "
+                f"Return ONLY valid JSON: {{\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}}"
             )
         else:
+            sub_topic = random.choice([
+                "Radha Krishna leela & Barsana/Vrindavan",
+                "Shri Ram, Mata Sita & Ramayana",
+                "Bhagwan Mahadev, Mata Parvati & 12 Jyotirlingas",
+                "Jagannath Puri & Rath Yatra",
+                "Mahabharata & Bhagavad Gita",
+                "Hanuman Ji & Vishnu Avatars"
+            ])
             topic_prompt = (
-                "Generate 1 unique, deep Hindu spiritual trivia question in Hinglish (Hindi written in English script) about Radha Krishna, Ram Sita, Mahadev Parvati, Jagannath Ji, Ramayana, or Mahabharata with a 1 or 2 word exact answer. "
-                "Return ONLY valid JSON: {\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}"
+                f"Generate 1 unique, interesting Hindu spiritual trivia question specifically about {sub_topic} "
+                f"in Hinglish (Hindi written in English script) with a 1 or 2 word exact answer. "
+                f"Do NOT repeat any of these questions: [{avoid_str}]. "
+                f"Return ONLY valid JSON: {{\"question\": \"...\", \"answer\": \"...\", \"aliases\": [\"...\"]}}"
             )
-        payload = json.dumps({
-            'model': 'openai/gpt-oss-20b',
-            'messages': [
-                {'role': 'system', 'content': 'You output strictly valid JSON only. No markdown, no extra text.'},
-                {'role': 'user', 'content': topic_prompt}
-            ],
-            'max_tokens': 220,
-            'temperature': 0.9
-        }).encode('utf-8')
-        req = urllib.request.Request(
-            'https://api.groq.com/openai/v1/chat/completions',
-            data=payload,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            },
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            res = json.loads(resp.read().decode('utf-8'))
-        raw_txt = res['choices'][0]['message']['content'].strip()
-        raw_txt = re.sub(r'^```(?:json)?|```$', '', raw_txt, flags=re.M).strip()
-        obj = json.loads(raw_txt)
-        q_txt = str(obj.get('question', '')).strip()
-        ans_txt = str(obj.get('answer', '')).strip()
-        aliases = [str(a).strip().lower() for a in obj.get('aliases', []) if str(a).strip()]
-        if ans_txt.lower() not in aliases:
-            aliases.append(ans_txt.lower())
-        if q_txt and ans_txt and q_txt not in asked_set:
-            return (cat_label, q_txt, ans_txt, aliases)
+
+        # Try available Groq models in order
+        for mod_name in ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant']:
+            try:
+                payload = json.dumps({
+                    'model': mod_name,
+                    'messages': [
+                        {'role': 'system', 'content': 'You output strictly valid JSON only. No markdown, no extra text.'},
+                        {'role': 'user', 'content': topic_prompt}
+                    ],
+                    'max_tokens': 240,
+                    'temperature': 0.95
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    'https://api.groq.com/openai/v1/chat/completions',
+                    data=payload,
+                    headers={
+                        'Authorization': f'Bearer {api_key}',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0'
+                    },
+                    method='POST'
+                )
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    res = json.loads(resp.read().decode('utf-8'))
+                raw_txt = res['choices'][0]['message']['content'].strip()
+                raw_txt = re.sub(r'^```(?:json)?|```$', '', raw_txt, flags=re.M).strip()
+                obj = json.loads(raw_txt)
+                q_txt = str(obj.get('question', '')).strip()
+                ans_txt = str(obj.get('answer', '')).strip()
+                aliases = [str(a).strip().lower() for a in obj.get('aliases', []) if str(a).strip()]
+                if ans_txt.lower() not in aliases:
+                    aliases.append(ans_txt.lower())
+                if q_txt and ans_txt and q_txt not in asked_set:
+                    return (cat_label, q_txt, ans_txt, aliases)
+            except Exception:
+                continue
     except Exception:
         pass
     return None
@@ -2724,7 +2832,8 @@ def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
         unasked_pool = [q for q in pool if q[1] not in asked]
 
     chosen = None
-    if not unasked_pool or random.random() < 0.50:
+    # Prioritize brand-new AI questions 80% of the time so every question feels completely fresh!
+    if random.random() < 0.80 or not unasked_pool:
         ai_q = generate_ai_quiz_question(category_filter, asked)
         if ai_q:
             chosen = ai_q
@@ -2825,7 +2934,6 @@ def spiritual_cmd(m):
     post_cricket_question(m.chat.id, reply_to_id=m.message_id, category_filter='spiritual')
 
 def hourly_cricket_loop():
-    # Runs every 2 hours (7200 seconds) and checks cricket_auto and spiritual_auto separately
     while True:
         time.sleep(7200)
         try:

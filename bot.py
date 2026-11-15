@@ -66,6 +66,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS chatbot_memory(id INTEGER PRIMARY KEY AUTOINCREMENT,trigger_text TEXT,reply_type TEXT,reply_content TEXT);
         CREATE INDEX IF NOT EXISTS idx_chatbot_trigger ON chatbot_memory(trigger_text);
         CREATE TABLE IF NOT EXISTS whispers(whisper_id TEXT PRIMARY KEY,sender_id INTEGER,sender_name TEXT,target_key TEXT,secret_text TEXT,created_at REAL);
+        CREATE TABLE IF NOT EXISTS asked_quizzes(chat_id INTEGER,category TEXT,question_hash TEXT,asked_at REAL,PRIMARY KEY(chat_id,category,question_hash));
         ''')
         # Migrate previously saved group AFK statuses and member records.
         c.execute('''INSERT INTO global_afk(user_id,reason,since)
@@ -212,27 +213,641 @@ def target_id(m):
 def target_usage(m):
     return bot.reply_to(m, 'Reply to the user, or use a known @username or numeric Telegram user ID. A username must have been seen in this group before.')
 
-# ---------------- HEALTH SERVER ----------------
+# ---------------- HEALTH SERVER & 3D LUDO MINI APP HOST ----------------
+LUDO3D_ROOMS = {}
+LUDO3D_LOCK = threading.Lock()
+
+LUDO3D_HTML = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mishra 3D Ludo King</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    background: radial-gradient(circle at top, #1f2b4d 0%, #0f1629 100%);
+    color: #fff; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden;
+  }
+  .header {
+    width: 100%; max-width: 440px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .title { font-weight: 800; font-size: 16px; letter-spacing: 0.5px; color: #ffd54f; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  .room-badge { font-size: 11px; background: #2b3a67; padding: 4px 8px; border-radius: 12px; color: #90caf9; font-weight: 600; }
+  .players-bar {
+    width: 100%; max-width: 440px; display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 6px; padding: 8px 12px;
+  }
+  .p-card {
+    background: rgba(255,255,255,0.07); border-radius: 12px; padding: 6px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border: 2px solid transparent; transition: all 0.25s ease;
+  }
+  .p-card.active {
+    border-color: #ffd54f; background: rgba(255, 213, 79, 0.16);
+    box-shadow: 0 0 14px rgba(255, 213, 79, 0.35); transform: scale(1.02);
+  }
+  .p-info { display: flex; align-items: center; gap: 7px; overflow: hidden; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; box-shadow: inset -2px -2px 4px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.4); }
+  .p-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 105px; }
+  .p-score { font-size: 11px; color: #cfd8dc; font-weight: 600; }
+
+  .board-wrap {
+    position: relative; width: 94vw; max-width: 410px; aspect-ratio: 1 / 1;
+    margin: 4px auto; padding: 8px; border-radius: 20px;
+    background: linear-gradient(145deg, #6d3b18, #3e1f0a);
+    box-shadow: 0 16px 35px rgba(0,0,0,0.65), inset 0 2px 4px rgba(255,255,255,0.2);
+    transform: perspective(900px) rotateX(8deg);
+    transition: transform 0.4s ease;
+  }
+  canvas {
+    width: 100%; height: 100%; display: block; border-radius: 12px;
+    background: #fff; box-shadow: inset 0 0 8px rgba(0,0,0,0.35);
+  }
+
+  .controls {
+    width: 100%; max-width: 440px; padding: 10px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .status-msg {
+    font-size: 13px; font-weight: 600; color: #e0f7fa; text-align: center;
+    background: rgba(0,0,0,0.35); padding: 6px 14px; border-radius: 20px; width: 100%;
+  }
+  .dice-row { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
+  .dice-3d {
+    width: 62px; height: 62px; border-radius: 14px;
+    background: linear-gradient(145deg, #ffffff, #dcdde1);
+    color: #1e272e; font-size: 32px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.5), inset 0 -4px 6px rgba(0,0,0,0.2), inset 0 3px 5px #fff;
+    cursor: pointer; transition: transform 0.2s;
+  }
+  .dice-3d.rolling { animation: spin3d 0.45s infinite linear; }
+  @keyframes spin3d {
+    0% { transform: rotateX(0deg) rotateY(0deg) scale(1.08); }
+    50% { transform: rotateX(180deg) rotateY(180deg) scale(1.15); }
+    100% { transform: rotateX(360deg) rotateY(360deg) scale(1.08); }
+  }
+  .btn {
+    border: none; border-radius: 14px; padding: 12px 20px; font-size: 14px; font-weight: 800;
+    cursor: pointer; color: #fff; box-shadow: 0 6px 14px rgba(0,0,0,0.35); transition: transform 0.15s;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn-join { background: linear-gradient(135deg, #00b894, #00cec9); }
+  .btn-start { background: linear-gradient(135deg, #fdcb6e, #e17055); color: #1e272e; }
+  .btn-roll { background: linear-gradient(135deg, #6c5ce7, #a29bfe); flex: 1; max-width: 220px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">👑 MISHRA 3D LUDO KING</div>
+    <div class="room-badge" id="roomLabel">Room: ...</div>
+  </div>
+
+  <div class="players-bar" id="playersBar"></div>
+
+  <div class="board-wrap">
+    <canvas id="ludoCanvas" width="600" height="600"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="status-msg" id="statusMsg">Loading 3D Ludo Arena...</div>
+    <div class="dice-row" id="actionRow"></div>
+  </div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const params = new URLSearchParams(window.location.search);
+let roomId = params.get('room') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || 'default';
+document.getElementById('roomLabel').innerText = 'Room #' + roomId;
+
+const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || {
+  id: Math.floor(Math.random() * 900000) + 100000,
+  first_name: 'Guest_' + Math.floor(Math.random() * 99)
+};
+
+const COLORS = [
+  { key: 'R', name: 'Red', hex: '#e53935', dark: '#8e0000', light: '#ffcdd2', start: 0 },
+  { key: 'G', name: 'Green', hex: '#43a047', dark: '#00701a', light: '#c8e6c9', start: 13 },
+  { key: 'Y', name: 'Yellow', hex: '#fbc02d', dark: '#c49000', light: '#fff9c4', start: 26 },
+  { key: 'B', name: 'Blue', hex: '#1e88e5', dark: '#005cb2', light: '#bbdefb', start: 39 }
+];
+
+const TRACK = [
+  [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],
+  [1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+  [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],[14,6],
+  [13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0]
+];
+
+const HOME_PATHS = {
+  R: [[7,1],[7,2],[7,3],[7,4],[7,5]],
+  G: [[1,7],[2,7],[3,7],[4,7],[5,7]],
+  Y: [[7,13],[7,12],[7,11],[7,10],[7,9]],
+  B: [[13,7],[12,7],[11,7],[10,7],[9,7]]
+};
+
+const YARDS = {
+  R: [[1.5,1.5],[1.5,4.5],[4.5,1.5],[4.5,4.5]],
+  G: [[1.5,10.5],[1.5,13.5],[4.5,10.5],[4.5,13.5]],
+  Y: [[10.5,10.5],[10.5,13.5],[13.5,10.5],[13.5,13.5]],
+  B: [[10.5,1.5],[10.5,4.5],[13.5,1.5],[13.5,4.5]]
+};
+
+const SAFES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+const DICE_ICONS = ['🎲','⚀','⚁','⚂','⚃','⚄','⚅'];
+
+let state = null;
+let rollingAnim = false;
+let clickableTokens = [];
+
+const canvas = document.getElementById('ludoCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawStar(cx, cy, rOut, rIn, fill, stroke) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = (-90 + i * 36) * Math.PI / 180;
+    const rad = i % 2 === 0 ? rOut : rIn;
+    const x = cx + rad * Math.cos(ang);
+    const y = cy + rad * Math.sin(ang);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawBoard() {
+  const cell = 40;
+  ctx.clearRect(0, 0, 600, 600);
+
+  for (let r = 0; r < 15; r++) {
+    for (let c = 0; c < 15; c++) {
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(c * cell, r * cell, cell, cell);
+      ctx.strokeStyle = '#cfd8dc';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(c * cell, r * cell, cell, cell);
+    }
+  }
+
+  const houses = [
+    { r: 0, c: 0, col: COLORS[0] },
+    { r: 0, c: 9, col: COLORS[1] },
+    { r: 9, c: 9, col: COLORS[2] },
+    { r: 9, c: 0, col: COLORS[3] }
+  ];
+  houses.forEach(h => {
+    const x = h.c * cell, y = h.r * cell, w = 6 * cell;
+    ctx.fillStyle = h.col.hex;
+    ctx.fillRect(x, y, w, w);
+    ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, w);
+
+    ctx.fillStyle = h.col.dark;
+    ctx.beginPath(); ctx.roundRect(x + 28, y + 30, w - 52, w - 52, 22); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.roundRect(x + 25, y + 25, w - 52, w - 52, 22); ctx.fill();
+
+    YARDS[h.col.key].forEach(([yr, yc]) => {
+      const scx = yc * cell, scy = yr * cell;
+      ctx.beginPath(); ctx.arc(scx, scy, 18, 0, Math.PI * 2);
+      ctx.fillStyle = h.col.light; ctx.fill();
+      ctx.strokeStyle = h.col.hex; ctx.lineWidth = 3; ctx.stroke();
+    });
+  });
+
+  COLORS.forEach(col => {
+    const [sr, sc] = TRACK[col.start];
+    ctx.fillStyle = col.hex;
+    ctx.fillRect(sc * cell, sr * cell, cell, cell);
+    HOME_PATHS[col.key].forEach(([hr, hc]) => {
+      ctx.fillStyle = col.hex;
+      ctx.fillRect(hc * cell, hr * cell, cell, cell);
+      ctx.strokeStyle = '#eceff1'; ctx.lineWidth = 1; ctx.strokeRect(hc * cell, hr * cell, cell, cell);
+    });
+  });
+
+  SAFES.forEach(idx => {
+    const [sr, sc] = TRACK[idx];
+    const cx = sc * cell + cell / 2, cy = sr * cell + cell / 2;
+    const isStart = COLORS.some(c => c.start === idx);
+    drawStar(cx, cy, 13, 6, isStart ? '#ffffff' : '#cfd8dc', isStart ? '#37474f' : '#78909c');
+  });
+
+  const cx0 = 6 * cell, cy0 = 6 * cell, cx1 = 9 * cell, cy1 = 9 * cell, mx = 300, my = 300;
+  const tris = [
+    { pts: [[cx0,cy0],[cx0,cy1],[mx,my]], fill: COLORS[0].hex },
+    { pts: [[cx0,cy0],[cx1,cy0],[mx,my]], fill: COLORS[1].hex },
+    { pts: [[cx1,cy0],[cx1,cy1],[mx,my]], fill: COLORS[2].hex },
+    { pts: [[cx0,cy1],[cx1,cy1],[mx,my]], fill: COLORS[3].hex }
+  ];
+  tris.forEach(t => {
+    ctx.beginPath(); ctx.moveTo(t.pts[0][0], t.pts[0][1]);
+    ctx.lineTo(t.pts[1][0], t.pts[1][1]); ctx.lineTo(t.pts[2][0], t.pts[2][1]);
+    ctx.closePath(); ctx.fillStyle = t.fill; ctx.fill();
+    ctx.strokeStyle = '#263238'; ctx.lineWidth = 1.5; ctx.stroke();
+  });
+
+  if (!state) return;
+
+  clickableTokens = [];
+  const groups = {};
+  state.players.forEach((p, pIdx) => {
+    const col = COLORS[pIdx];
+    p.tokens.forEach((pos, tIdx) => {
+      let px, py;
+      if (pos === -1) {
+        const [yr, yc] = YARDS[col.key][tIdx];
+        px = yc * cell; py = yr * cell;
+      } else if (pos >= 0 && pos <= 50) {
+        const gIdx = (col.start + pos) % 52;
+        const [tr, tc] = TRACK[gIdx];
+        px = tc * cell + cell / 2; py = tr * cell + cell / 2;
+      } else if (pos >= 51 && pos <= 55) {
+        const [hr, hc] = HOME_PATHS[col.key][pos - 51];
+        px = hc * cell + cell / 2; py = hr * cell + cell / 2;
+      } else {
+        px = 300 + (pIdx - 1.5) * 14; py = 300;
+      }
+      const key = Math.round(px) + ',' + Math.round(py);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push({ p, pIdx, col, tIdx, pos, px, py });
+    });
+  });
+
+  const curPlayer = state.players[state.turn_idx];
+  const isMyTurn = state.started && !state.over && curPlayer && String(curPlayer.uid) === String(user.id);
+
+  Object.values(groups).forEach(list => {
+    const offsets = list.length === 1 ? [[0,0]] : [[-8,-8],[8,-8],[-8,8],[8,8]];
+    list.forEach((item, idx) => {
+      const [ox, oy] = offsets[idx % 4];
+      const x = item.px + ox, y = item.py + oy;
+      const rad = list.length === 1 ? 15 : 11;
+
+      const canMove = isMyTurn && state.awaiting_move && item.p.uid === curPlayer.uid &&
+                      ((item.pos === -1 && state.dice === 6) || (item.pos >= 0 && item.pos < 56 && item.pos + state.dice <= 56));
+
+      if (canMove) {
+        clickableTokens.push({ x, y, rad: 22, tIdx: item.tIdx });
+        ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.45)'; ctx.fill();
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2.5; ctx.stroke();
+      }
+
+      ctx.beginPath(); ctx.arc(x + 2, y + 4, rad, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+
+      const grad = ctx.createRadialGradient(x - rad * 0.35, y - rad * 0.35, 2, x, y, rad);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.28, item.col.hex);
+      grad.addColorStop(1, item.col.dark);
+
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(item.tIdx + 1), x, y + 1);
+    });
+  });
+}
+
+canvas.addEventListener('click', (e) => {
+  if (!clickableTokens.length) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+
+  for (const tok of clickableTokens) {
+    const dist = Math.hypot(cx - tok.x, cy - tok.y);
+    if (dist <= tok.rad) {
+      sendAction('mv', tok.tIdx);
+      break;
+    }
+  }
+});
+
+function renderUI() {
+  if (!state) return;
+  const bar = document.getElementById('playersBar');
+  bar.innerHTML = '';
+  state.players.forEach((p, idx) => {
+    const col = COLORS[idx];
+    const done = p.tokens.filter(t => t === 56).length;
+    const isTurn = state.started && !state.over && idx === state.turn_idx;
+    const card = document.createElement('div');
+    card.className = 'p-card' + (isTurn ? ' active' : '');
+    card.innerHTML = `
+      <div class="p-info">
+        <div class="dot" style="background:${col.hex}"></div>
+        <div class="p-name">${p.name}</div>
+      </div>
+      <div class="p-score">🏠 ${done}/4</div>
+    `;
+    bar.appendChild(card);
+  });
+
+  const statusEl = document.getElementById('statusMsg');
+  const actionRow = document.getElementById('actionRow');
+  actionRow.innerHTML = '';
+
+  const alreadyJoined = state.players.some(p => String(p.uid) === String(user.id));
+
+  if (!state.started) {
+    statusEl.innerText = state.last_log || '2 se 4 players join karein!';
+    if (!alreadyJoined && state.players.length < 4) {
+      const btnJ = document.createElement('button');
+      btnJ.className = 'btn btn-join';
+      btnJ.innerText = '➕ Join 3D Ludo';
+      btnJ.onclick = () => sendAction('join');
+      actionRow.appendChild(btnJ);
+    }
+    if (alreadyJoined && state.players.length >= 2) {
+      const btnS = document.createElement('button');
+      btnS.className = 'btn btn-start';
+      btnS.innerText = `🚀 Start Match (${state.players.length}P)`;
+      btnS.onclick = () => sendAction('start');
+      actionRow.appendChild(btnS);
+    }
+  } else if (state.over) {
+    statusEl.innerText = `🏆 WINNER: ${state.winner_name} (+100 Coins)!`;
+    const btnR = document.createElement('button');
+    btnR.className = 'btn btn-join';
+    btnR.innerText = '🔄 Play New 3D Match';
+    btnR.onclick = () => sendAction('rematch');
+    actionRow.appendChild(btnR);
+  } else {
+    const cur = state.players[state.turn_idx];
+    const isMine = String(cur.uid) === String(user.id);
+    if (state.awaiting_move) {
+      statusEl.innerText = isMine
+        ? `🎲 Dice ${state.dice} aaya! Chamakti hui goti par tap karein!`
+        : `${cur.name} ne 🎲 ${state.dice} roll kiya — goti chal rahe hain...`;
+    } else {
+      statusEl.innerText = isMine
+        ? `👉 Aapki baari hai! 3D Dice par tap karein!`
+        : `⏳ ${cur.name} ki baari hai...`;
+    }
+
+    const diceBox = document.createElement('div');
+    diceBox.className = 'dice-3d' + (rollingAnim ? ' rolling' : '');
+    diceBox.innerText = DICE_ICONS[state.dice || 0];
+    if (isMine && !state.awaiting_move) {
+      diceBox.onclick = () => {
+        rollingAnim = true; renderUI();
+        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 420);
+      };
+    }
+    actionRow.appendChild(diceBox);
+
+    if (isMine && !state.awaiting_move) {
+      const btnRoll = document.createElement('button');
+      btnRoll.className = 'btn btn-roll';
+      btnRoll.innerText = '🎲 Roll 3D Dice';
+      btnRoll.onclick = () => {
+        rollingAnim = true; renderUI();
+        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 420);
+      };
+      actionRow.appendChild(btnRoll);
+    }
+  }
+  drawBoard();
+}
+
+async function fetchState() {
+  try {
+    const res = await fetch(`/api/ludo3d?room=${encodeURIComponent(roomId)}`);
+    if (res.ok) {
+      state = await res.json();
+      renderUI();
+    }
+  } catch (e) {}
+}
+
+async function sendAction(action, tokenIdx = -1) {
+  try {
+    const res = await fetch('/api/ludo3d', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: roomId,
+        action: action,
+        uid: user.id,
+        name: user.first_name || 'Player',
+        token: tokenIdx
+      })
+    });
+    if (res.ok) {
+      state = await res.json();
+      renderUI();
+    }
+  } catch (e) {}
+}
+
+drawBoard();
+fetchState();
+setInterval(fetchState, 1500);
+</script>
+</body>
+</html>'''
+
+def get_or_create_3d_room(room_id):
+    with LUDO3D_LOCK:
+        now = time.time()
+        for k in list(LUDO3D_ROOMS.keys()):
+            if now - LUDO3D_ROOMS[k].get('ts', 0) > 7200:
+                LUDO3D_ROOMS.pop(k, None)
+        if room_id not in LUDO3D_ROOMS:
+            LUDO3D_ROOMS[room_id] = {
+                'room': room_id,
+                'players': [],
+                'started': False,
+                'over': False,
+                'winner_name': '',
+                'turn_idx': 0,
+                'dice': 0,
+                'awaiting_move': False,
+                'six_streak': 0,
+                'last_log': 'Table ready! Join karein.',
+                'ts': now
+            }
+        return LUDO3D_ROOMS[room_id]
+
+def handle_3d_ludo_post(data):
+    room_id = str(data.get('room', 'default'))[:24]
+    action = str(data.get('action', ''))
+    uid = int(data.get('uid', 0))
+    uname = str(data.get('name', 'Player'))[:24]
+    tidx = int(data.get('token', -1))
+
+    room = get_or_create_3d_room(room_id)
+    with LUDO3D_LOCK:
+        room['ts'] = time.time()
+        if action == 'rematch':
+            room['players'] = [{'uid': uid, 'name': uname, 'tokens': [-1, -1, -1, -1]}]
+            room['started'] = False
+            room['over'] = False
+            room['winner_name'] = ''
+            room['turn_idx'] = 0
+            room['dice'] = 0
+            room['awaiting_move'] = False
+            room['six_streak'] = 0
+            room['last_log'] = f"{uname} ne naya 3D table banaya!"
+            return room
+
+        if room['over']:
+            return room
+
+        if action == 'join':
+            if not room['started'] and len(room['players']) < 4 and not any(p['uid'] == uid for p in room['players']):
+                room['players'].append({'uid': uid, 'name': uname, 'tokens': [-1, -1, -1, -1]})
+                room['last_log'] = f"{uname} ne 3D Ludo join kiya!"
+            return room
+
+        if action == 'start':
+            if not room['started'] and len(room['players']) >= 2 and any(p['uid'] == uid for p in room['players']):
+                room['started'] = True
+                room['turn_idx'] = 0
+                room['last_log'] = f"Match shuru! {room['players'][0]['name']} ki baari."
+            return room
+
+        if not room['started'] or not room['players']:
+            return room
+
+        cur = room['players'][room['turn_idx']]
+        if cur['uid'] != uid:
+            return room
+
+        if action == 'roll' and not room['awaiting_move']:
+            dval = random.randint(1, 6)
+            room['dice'] = dval
+            room['six_streak'] = (room['six_streak'] + 1) if dval == 6 else 0
+            if room['six_streak'] >= 3:
+                room['six_streak'] = 0
+                room['last_log'] = f"{cur['name']} ke teen 6 aaye — turn skip!"
+                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+                return room
+
+            valid = [i for i, pos in enumerate(cur['tokens']) if (pos == -1 and dval == 6) or (0 <= pos < 56 and pos + dval <= 56)]
+            if not valid:
+                room['last_log'] = f"{cur['name']} ne {dval} roll kiya — koi chal nahi."
+                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+                return room
+
+            room['awaiting_move'] = True
+            room['last_log'] = f"{cur['name']} ne {dval} roll kiya!"
+            return room
+
+        if action == 'mv' and room['awaiting_move'] and 0 <= tidx < 4:
+            dval = room['dice']
+            pos = cur['tokens'][tidx]
+            if not ((pos == -1 and dval == 6) or (0 <= pos < 56 and pos + dval <= 56)):
+                return room
+
+            new_pos = 0 if pos == -1 else pos + dval
+            cur['tokens'][tidx] = new_pos
+            room['awaiting_move'] = False
+            bonus = (dval == 6)
+            cut_txt = ''
+
+            if 0 <= new_pos <= 50:
+                my_start = LUDO_COLORS[room['turn_idx']]['start']
+                g_idx = (my_start + new_pos) % 52
+                if g_idx not in LUDO_SAFE_INDICES:
+                    for o_idx, opp in enumerate(room['players']):
+                        if opp['uid'] == uid:
+                            continue
+                        opp_start = LUDO_COLORS[o_idx]['start']
+                        for ot_i, o_pos in enumerate(opp['tokens']):
+                            if 0 <= o_pos <= 50 and ((opp_start + o_pos) % 52) == g_idx:
+                                opp['tokens'][ot_i] = -1
+                                bonus = True
+                                cut_txt = f" 💥 {opp['name']} ki goti kaat di!"
+
+            if new_pos == 56:
+                bonus = True
+                cut_txt += " 🏠 Goti Home!"
+
+            room['last_log'] = f"{cur['name']} ({dval}): Goti {tidx+1} chali.{cut_txt}"
+
+            if all(t == 56 for t in cur['tokens']):
+                room['over'] = True
+                room['winner_name'] = cur['name']
+                with DB_LOCK, connect() as c:
+                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (uid, ''))
+                    c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (uid,))
+                return room
+
+            if not bonus:
+                room['six_streak'] = 0
+                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+            return room
+
+    return room
+
 class Health(BaseHTTPRequestHandler):
-    def _send(self):
-        path = urlparse(self.path).path
-        if path not in ('/', '/health', '/healthz'):
-            body = b'Not found'; self.send_response(404)
-        else:
-            body = b'Mishra Guard Robot V4 is running'; self.send_response(200)
-        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+    def _send_bytes(self, status, body, ctype='text/plain; charset=utf-8'):
+        self.send_response(status)
+        self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
-        if self.command != 'HEAD': self.wfile.write(body)
-    def do_GET(self): self._send()
-    def do_HEAD(self): self._send()
+        if self.command != 'HEAD':
+            self.wfile.write(body)
+
+    def do_GET(self):
+        from urllib.parse import parse_qs
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path in ('/', '/health', '/healthz'):
+            self._send_bytes(200, b'Mishra Guard Robot V4 is running')
+        elif path == '/ludo3d':
+            self._send_bytes(200, LUDO3D_HTML.encode('utf-8'), 'text/html; charset=utf-8')
+        elif path == '/api/ludo3d':
+            qs = parse_qs(parsed.query)
+            room_id = (qs.get('room') or ['default'])[0][:24]
+            room = get_or_create_3d_room(room_id)
+            self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
+        else:
+            self._send_bytes(404, b'Not found')
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == '/api/ludo3d':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                raw = self.rfile.read(min(length, 8192)).decode('utf-8')
+                data = json.loads(raw) if raw else {}
+                room = handle_3d_ludo_post(data)
+                self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
+            except Exception as e:
+                self._send_bytes(400, json.dumps({'error': str(e)}).encode('utf-8'), 'application/json')
+        else:
+            self._send_bytes(404, b'Not found')
+
     def log_message(self, *args): pass
 
 def health_server():
     server = ThreadingHTTPServer(('0.0.0.0', PORT), Health)
     server.daemon_threads = True
-    log.info('Health server listening on 0.0.0.0:%s', PORT)
+    log.info('Health & 3D Ludo server listening on 0.0.0.0:%s', PORT)
     server.serve_forever()
 
 # ---------------- HELP ----------------
@@ -280,21 +895,35 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 <b>New Features & Games</b>
 /chatbot on|off — smart auto-reply (text, sticker & GIF) when called
 /whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
+/ludo — 🎲 3D Ludo King Mini App + Classic In-Chat Ludo (+100 coins)
 /ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
-/ludo — 🎲 4-Player Ludo board game with visual board (+100 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
 /cricket [on|off] — hard cricket quiz & auto toggle
 /spiritual [on|off] — spiritual quiz (Radha Krishna, Ram Sita, Mahadev, Jagannath ji) & auto toggle
 
-<b>Optional AI</b>
-/ai question — needs GROQ_API_KEY
+<b>AI Chat & Image Generation</b>
+/ai question — smart AI answers (needs GROQ_API_KEY)
+/img prompt — generate HD AI images from text
 
 ━━━━━━━━━━━━━━━━━━━━
 👑 <b>Bot Owner:</b> Shivam Mishra
 📢 <b>Join our channel:</b> @dreamers_adda'''
 
 @bot.message_handler(commands=['start', 'help', 'panel'])
-def help_cmd(m): bot.send_message(m.chat.id, HELP)
+def help_cmd(m):
+    parts = (m.text or '').split(maxsplit=1)
+    if len(parts) > 1 and parts[1].strip().startswith(('gc_', 'dm_')):
+        room_id = parts[1].strip()[:24]
+        base = get_public_webapp_base()
+        if base:
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton('🎮 Launch 3D Ludo King Now', web_app=types.WebAppInfo(url=f"{base}/ludo3d?room={room_id}")))
+            return bot.send_message(
+                m.chat.id,
+                f"👑 <b>3D LUDO KING ROOM READY!</b>\nRoom ID: <code>{esc(room_id)}</code>\n\nNiche button dabakar 3D Board open karein:",
+                reply_markup=kb
+            )
+    bot.send_message(m.chat.id, HELP)
 
 # ---------------- STATS & FUN ----------------
 def ranking_text(chat, period):
@@ -1190,6 +1819,40 @@ def ai(m):
 
     bot.reply_to(m, '❌ Groq AI par koi working model nahi mila. Render mein GROQ_MODEL variable ko delete/clear kar dein taaki bot auto-select kare.')
 
+# ---------------- AI PHOTO GENERATION (/img & /imagine) ----------------
+@bot.message_handler(commands=['img', 'imagine', 'generate'])
+def ai_generate_image(m):
+    p = (m.text or '').split(maxsplit=1)
+    if len(p) < 2 or not p[1].strip():
+        return bot.reply_to(m, 'Usage: <code>/img Radha Krishna in Vrindavan glowing moonlight</code>')
+    prompt = p[1].strip()[:500]
+    status = bot.reply_to(m, '🎨 <b>AI Photo generate ho rahi hai...</b> thoda intezar karein.')
+    try:
+        import urllib.request, urllib.parse
+        encoded_prompt = urllib.parse.quote(prompt)
+        seed = random.randint(1, 999999)
+        img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+        req = urllib.request.Request(img_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            img_bytes = resp.read(15 * 1024 * 1024)
+        if not img_bytes or len(img_bytes) < 1024:
+            raise RuntimeError('Image data empty')
+        bio = io.BytesIO(img_bytes)
+        bio.name = 'mishra_ai_art.jpg'
+        bot.send_photo(
+            m.chat.id,
+            bio,
+            caption=f"🎨 <b>AI Generated Image</b>\n<i>Prompt:</i> {esc(prompt[:250])}",
+            reply_to_message_id=m.message_id
+        )
+        safe_delete(m.chat.id, status.message_id)
+    except Exception as e:
+        log.exception('AI image generation failed')
+        try:
+            bot.edit_message_text('❌ AI image generate nahi ho paayi. Thodi der baad dobara try karein.', m.chat.id, status.message_id)
+        except Exception:
+            pass
+
 # ---------------- XP / LEVELS ----------------
 def xp_level(points):
     points = max(0, int(points))
@@ -2051,34 +2714,35 @@ def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
     if category_filter not in ('cricket', 'spiritual'):
         category_filter = random.choice(['cricket', 'spiritual'])
 
+    with DB_LOCK, connect() as c:
+        rows = c.execute('SELECT question_hash FROM asked_quizzes WHERE chat_id=? AND category=?', (chat_id, category_filter)).fetchall()
+        asked_db = {r['question_hash'] for r in rows}
+
     with CRICKET_LOCK:
-        asked = ASKED_QUIZ_HASHES[chat_id]
+        asked = asked_db | ASKED_QUIZ_HASHES[chat_id]
         pool = [q for q in HARD_QUIZ_BANK if (category_filter == 'cricket' and 'CRICKET' in q[0]) or (category_filter == 'spiritual' and 'SPIRITUAL' in q[0])]
         unasked_pool = [q for q in pool if q[1] not in asked]
 
     chosen = None
-    # If all built-in questions in this category were already asked, try AI dynamic generator first
-    if not unasked_pool:
+    if not unasked_pool or random.random() < 0.50:
         ai_q = generate_ai_quiz_question(category_filter, asked)
         if ai_q:
             chosen = ai_q
-        else:
-            # Reset history only after every single question has been played once
+
+    if chosen is None:
+        if not unasked_pool:
+            with DB_LOCK, connect() as c:
+                c.execute('DELETE FROM asked_quizzes WHERE chat_id=? AND category=?', (chat_id, category_filter))
             with CRICKET_LOCK:
                 for q in pool:
                     ASKED_QUIZ_HASHES[chat_id].discard(q[1])
-                unasked_pool = list(pool)
-
-    if chosen is None:
-        # 40% chance to generate fresh AI question even mid-cycle so questions always feel brand new
-        if random.random() < 0.40:
-            ai_q = generate_ai_quiz_question(category_filter, asked)
-            if ai_q:
-                chosen = ai_q
-        if chosen is None:
-            chosen = random.choice(unasked_pool)
+            unasked_pool = list(pool)
+        chosen = random.choice(unasked_pool)
 
     category, question, display_ans, answers = chosen
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT OR IGNORE INTO asked_quizzes(chat_id,category,question_hash,asked_at) VALUES(?,?,?,?)',
+                  (chat_id, category_filter, question, time.time()))
     with CRICKET_LOCK:
         ASKED_QUIZ_HASHES[chat_id].add(question)
         ACTIVE_CRICKET[chat_id] = {
@@ -2447,17 +3111,18 @@ def send_or_update_ludo(chat_id, gid, game, update_image=True):
     sent = bot.send_photo(chat_id, board_img, caption=cap, reply_markup=kb)
     game['board_msg_id'] = sent.message_id
 
-@bot.message_handler(commands=['ludo'])
-def ludo_cmd(m):
-    if not group(m):
-        return bot.reply_to(m, 'Use /ludo in a group to play with friends!')
+def get_public_webapp_base():
+    base = (os.getenv('WEBAPP_URL', '') or os.getenv('RENDER_EXTERNAL_URL', '')).strip().rstrip('/')
+    return base
+
+def launch_classic_ludo_in_chat(chat_id, creator_uid, creator_name, replace_msg_id=None):
     gid = uuid.uuid4().hex[:8]
     game = {
-        'chat_id': m.chat.id,
-        'board_msg_id': None,
+        'chat_id': chat_id,
+        'board_msg_id': replace_msg_id,
         'players': [{
-            'uid': m.from_user.id,
-            'name': user_name(m.from_user),
+            'uid': creator_uid,
+            'name': creator_name,
             'color': LUDO_COLORS[0],
             'tokens': [-1, -1, -1, -1]
         }],
@@ -2468,7 +3133,7 @@ def ludo_cmd(m):
         'dice': 0,
         'awaiting_move': False,
         'six_streak': 0,
-        'last_log': f"{user_name(m.from_user)} ne Ludo table banaya!",
+        'last_log': f"{creator_name} ne Ludo table banaya!",
         'ts': time.time()
     }
     with LUDO_LOCK:
@@ -2478,7 +3143,48 @@ def ludo_cmd(m):
                 LUDO_GAMES.pop(k, None)
         LUDO_GAMES[gid] = game
 
-    send_or_update_ludo(m.chat.id, gid, game, update_image=True)
+    if replace_msg_id:
+        safe_delete(chat_id, replace_msg_id)
+        game['board_msg_id'] = None
+    send_or_update_ludo(chat_id, gid, game, update_image=True)
+
+@bot.message_handler(commands=['ludo'])
+def ludo_cmd(m):
+    if not group(m):
+        base = get_public_webapp_base()
+        if base:
+            room_id = f"dm_{m.from_user.id}"
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton('🎮 Open 3D Ludo King App', web_app=types.WebAppInfo(url=f"{base}/ludo3d?room={room_id}")))
+            return bot.reply_to(m, "👑 <b>MISHRA 3D LUDO KING</b>\nNiche button dabakar 3D Ludo App kholein:", reply_markup=kb)
+        return bot.reply_to(m, 'Use /ludo in a group to play with friends!')
+
+    base = get_public_webapp_base()
+    room_id = f"gc_{abs(m.chat.id)}_{uuid.uuid4().hex[:4]}"
+    kb = types.InlineKeyboardMarkup(row_width=1)
+
+    if base:
+        bot_uname = ''
+        try:
+            bot_uname = bot.get_me().username
+        except Exception:
+            pass
+        if bot_uname:
+            kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (Mini App)', url=f"https://t.me/{bot_uname}?startapp={room_id}"))
+        else:
+            kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (Mini App)', url=f"{base}/ludo3d?room={room_id}"))
+
+    kb.add(types.InlineKeyboardButton('🖼️ Play Classic Ludo (In-Chat Board)', callback_data=f'ludo:newclassic:{m.from_user.id}'))
+
+    info_note = "" if base else "\n<i>(Tip: Render Environment mein WEBAPP_URL dalne par 3D Mini App button bhi active ho jayega)</i>"
+    bot.send_message(
+        m.chat.id,
+        f"👑 <b>MISHRA LUDO ARENA</b> 👑\n\n"
+        f"Apna pasandida mode chunein:\n"
+        f"• <b>🎮 3D Ludo King (Mini App):</b> Full 3D board, smooth dice & zero photo reload!\n"
+        f"• <b>🖼️ Classic In-Chat Ludo:</b> Seedha group chat ke andar khelein!{info_note}",
+        reply_markup=kb
+    )
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('ludo:'))
 def ludo_callback(call):
@@ -2489,6 +3195,11 @@ def ludo_callback(call):
     action = parts[2]
     uid = call.from_user.id
     uname = user_name(call.from_user)
+
+    if gid == 'newclassic':
+        bot.answer_callback_query(call.id, '🖼️ Classic Ludo Board tayyar ho raha hai...')
+        launch_classic_ludo_in_chat(call.message.chat.id, uid, uname, replace_msg_id=call.message.message_id)
+        return
 
     with LUDO_LOCK:
         game = LUDO_GAMES.get(gid)

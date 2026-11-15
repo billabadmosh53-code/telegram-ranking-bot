@@ -901,9 +901,12 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /cricket [on|off] — hard cricket quiz & auto toggle
 /spiritual [on|off] — spiritual quiz (Radha Krishna, Ram Sita, Mahadev, Jagannath ji) & auto toggle
 
-<b>AI Chat & Image Generation</b>
+<b>Fun GIF Roleplay Actions</b>
+/hug /kiss /love /bite /kill /slap /pat /cuddle /punch /tickle — reply, @username, mention or ID
+
+<b>AI Chat & Multi-Engine HD Image Generation</b>
 /ai question — smart AI answers (needs GROQ_API_KEY)
-/img prompt — generate HD AI images from text
+/img prompt — HD AI image (HF FLUX + AI Horde Juggernaut XL + Pollinations)
 
 ━━━━━━━━━━━━━━━━━━━━
 👑 <b>Bot Owner:</b> Shivam Mishra
@@ -1819,7 +1822,7 @@ def ai(m):
 
     bot.reply_to(m, '❌ Groq AI par koi working model nahi mila. Render mein GROQ_MODEL variable ko delete/clear kar dein taaki bot auto-select kare.')
 
-# ---------------- AI PHOTO GENERATION (/img & /imagine - FLUX HD + PROMPT ENHANCER + ZERO COOLDOWN) ----------------
+# ---------------- MULTI-ENGINE HD AI PHOTO GENERATION (HF FLUX + AI HORDE + POLLINATIONS) ----------------
 def enhance_image_prompt_with_groq(user_prompt):
     raw_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY', '')
     api_key = str(raw_key).strip().strip("'").strip('"')
@@ -1863,19 +1866,116 @@ def enhance_image_prompt_with_groq(user_prompt):
         pass
     return f"{user_prompt}, ultra detailed, photorealistic, 8k resolution, cinematic lighting, masterpiece, sharp focus"
 
+def generate_via_huggingface(enhanced_prompt):
+    hf_token = (os.getenv('HF_TOKEN', '') or os.getenv('HUGGINGFACE_TOKEN', '')).strip().strip("'").strip('"')
+    if not hf_token:
+        return None
+    import urllib.request
+    hf_models = [
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+    ]
+    payload = json.dumps({"inputs": enhanced_prompt}).encode('utf-8')
+    for url in hf_models:
+        try:
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    'Authorization': f'Bearer {hf_token}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'image/jpeg,image/png,*/*'
+                },
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=35) as resp:
+                data = resp.read(15 * 1024 * 1024)
+                if data and len(data) > 12000 and (data[:3] == b'\xff\xd8\xff' or data[:4] == b'\x89PNG' or data[:4] == b'RIFF'):
+                    return data
+        except Exception as e:
+            log.warning("HF inference failed (%s): %s", url, e)
+    return None
+
+def generate_via_aihorde(enhanced_prompt):
+    # 100% Free Distributed GPU Network (Juggernaut XL / AlbedoBase XL) - works with anonymous key '0000000000'
+    import urllib.request
+    horde_key = os.getenv('AI_HORDE_KEY', '0000000000').strip() or '0000000000'
+    headers = {
+        'apikey': horde_key,
+        'Content-Type': 'application/json',
+        'Client-Agent': 'MishraGuardRobot:4.0:telegram',
+        'User-Agent': 'Mozilla/5.0'
+    }
+    body = json.dumps({
+        "prompt": f"{enhanced_prompt} ### ugly, blurry, deformed, distorted face, extra fingers, low quality, watermark",
+        "params": {
+            "sampler_name": "k_euler_a",
+            "cfg_scale": 7.0,
+            "width": 768,
+            "height": 768,
+            "steps": 22,
+            "n": 1
+        },
+        "nsfw": False,
+        "censor_nsfw": True,
+        "models": ["Juggernaut XL", "AlbedoBase XL (SDXL)", "Deliberate", "stable_diffusion"],
+        "r2": True
+    }).encode('utf-8')
+    try:
+        req = urllib.request.Request("https://aihorde.net/api/v2/generate/async", data=body, headers=headers, method='POST')
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            job = json.loads(resp.read().decode('utf-8'))
+        job_id = job.get('id')
+        if not job_id:
+            return None
+
+        # Poll up to 28 seconds for GPU worker completion
+        for _ in range(14):
+            time.sleep(2)
+            chk_req = urllib.request.Request(f"https://aihorde.net/api/v2/generate/check/{job_id}", headers=headers)
+            with urllib.request.urlopen(chk_req, timeout=10) as chk_resp:
+                chk = json.loads(chk_resp.read().decode('utf-8'))
+            if chk.get('done'):
+                st_req = urllib.request.Request(f"https://aihorde.net/api/v2/generate/status/{job_id}", headers=headers)
+                with urllib.request.urlopen(st_req, timeout=12) as st_resp:
+                    st = json.loads(st_resp.read().decode('utf-8'))
+                gens = st.get('generations') or []
+                if gens and gens[0].get('img'):
+                    img_ref = gens[0]['img']
+                    if img_ref.startswith('http'):
+                        with urllib.request.urlopen(img_ref, timeout=20) as iresp:
+                            return iresp.read(15 * 1024 * 1024)
+                    else:
+                        import base64
+                        return base64.b64decode(img_ref)
+                break
+            if not chk.get('is_possible', True):
+                break
+    except Exception as e:
+        log.warning("AI Horde generation skipped/failed: %s", e)
+    return None
+
 def fetch_ai_image_bytes(enhanced_prompt):
+    # Engine 1: Hugging Face FLUX.1-schnell (if HF_TOKEN set)
+    img_data = generate_via_huggingface(enhanced_prompt)
+    if img_data:
+        return img_data, "FLUX.1 HD"
+
+    # Engine 2: AI Horde Free GPU Network (Juggernaut XL / AlbedoBase XL - no key required)
+    img_data = generate_via_aihorde(enhanced_prompt)
+    if img_data:
+        return img_data, "Juggernaut XL"
+
+    # Engine 3: Fast Pollinations FLUX / Turbo fallback
     import urllib.request, urllib.parse
     encoded = urllib.parse.quote(enhanced_prompt)
     seed = random.randint(1000, 99999999)
-    # Multiple fast models & mirrors with unique randomized User-Agents so there is NEVER a 2-minute rate limit!
     ua_list = [
         f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(120,134)}.0.0.0 Safari/537.36",
         f"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/{random.randint(120,134)}.0.0.0 Mobile Safari/537.36",
-        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.{random.randint(1,6)} Safari/605.1.15"
     ]
     endpoints = [
-        f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true&enhance=false",
-        f"https://pollinations.ai/p/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true",
         f"https://image.pollinations.ai/prompt/{encoded}?model=turbo&width=1024&height=1024&seed={seed+1}&nologo=true",
     ]
     for url in endpoints:
@@ -1883,17 +1983,15 @@ def fetch_ai_image_bytes(enhanced_prompt):
             req = urllib.request.Request(url, headers={
                 'User-Agent': random.choice(ua_list),
                 'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-                'Referer': 'https://pollinations.ai/'
             })
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 ctype = (resp.headers.get('Content-Type') or '').lower()
                 data = resp.read(15 * 1024 * 1024)
-                # Ensure it's a real image and not an error/rate-limit placeholder
                 if data and len(data) > 18000 and ('image' in ctype or data[:3] == b'\xff\xd8\xff' or data[:4] == b'\x89PNG'):
-                    return data
+                    return data, "Flux Studio"
         except Exception:
             continue
-    return None
+    return None, None
 
 @bot.message_handler(commands=['img', 'imagine', 'generate'])
 def ai_generate_image(m):
@@ -1901,27 +1999,246 @@ def ai_generate_image(m):
     if len(p) < 2 or not p[1].strip():
         return bot.reply_to(m, 'Usage: <code>/img Radha Krishna in Vrindavan glowing moonlight</code>')
     raw_prompt = p[1].strip()[:400]
-    status = bot.reply_to(m, '🎨 <b>HD AI Photo ban rahi hai...</b> (5-10 sec)')
+    status = bot.reply_to(m, '🎨 <b>HD AI Photo generate ho rahi hai...</b> thoda intezar karein.')
     try:
         enhanced = enhance_image_prompt_with_groq(raw_prompt)
-        img_bytes = fetch_ai_image_bytes(enhanced)
+        img_bytes, engine_name = fetch_ai_image_bytes(enhanced)
         if not img_bytes:
-            raise RuntimeError('All image endpoints busy')
+            raise RuntimeError('All image engines busy')
         bio = io.BytesIO(img_bytes)
         bio.name = 'mishra_hd_art.jpg'
         bot.send_photo(
             m.chat.id,
             bio,
-            caption=f"🎨 <b>HD AI Art</b>\n<i>Prompt:</i> {esc(raw_prompt[:250])}",
+            caption=f"🎨 <b>HD AI Art ({engine_name})</b>\n<i>Prompt:</i> {esc(raw_prompt[:250])}",
             reply_to_message_id=m.message_id
         )
         safe_delete(m.chat.id, status.message_id)
     except Exception:
         log.exception('AI image generation failed')
         try:
-            bot.edit_message_text('❌ Server abhi busy hai, 5 second baad dobara <code>/img</code> try karein.', m.chat.id, status.message_id)
+            bot.edit_message_text('❌ Sabhi AI image servers abhi busy hain, 10 second baad dobara <code>/img</code> try karein.', m.chat.id, status.message_id)
         except Exception:
             pass
+
+# ---------------- INTERACTIVE GIF ROLEPLAY ACTIONS (/hug, /kiss, /love, /bite, /kill, etc.) ----------------
+ACTION_SPECS = {
+    'hug': {
+        'api': 'hug',
+        'tenor_queries': ['bollywood actress warm hug romantic gif', 'korean drama cute hug gif', 'anime warm hug gif'],
+        'templates': [
+            "🤗 {sender} ne {target} ko ek pyara sa warm hug diya! ❤️",
+            "🫂 {sender} ne {target} ko gale laga liya! ✨"
+        ]
+    },
+    'kiss': {
+        'api': 'kiss',
+        'tenor_queries': ['bollywood actress flying kiss cute gif', 'korean actress cute kiss heart gif', 'anime sweet kiss gif'],
+        'templates': [
+            "💋 {sender} ne {target} ko pyar se kiss kiya! 💕",
+            "😘 {sender} sent a sweet flying kiss to {target}! 💖"
+        ]
+    },
+    'love': {
+        'api': 'blush',
+        'tenor_queries': ['indian actress cute heart love blush gif', 'korean actress finger heart love gif', 'bollywood romantic love eye contact gif'],
+        'templates': [
+            "❤️ {sender} ko {target} se beinteha pyar ho gaya hai! 💘",
+            "💞 {sender} is sending pure love & hearts to {target}! 🥰"
+        ]
+    },
+    'romance': {
+        'api': 'blush',
+        'tenor_queries': ['bollywood romantic couple rain dance gif', 'korean drama romantic couple cute gif'],
+        'templates': [
+            "🌹 {sender} aur {target} ka romantic moment chal raha hai! ✨❤️"
+        ]
+    },
+    'bite': {
+        'api': 'bite',
+        'tenor_queries': ['anime playful bite gif', 'cute girl playful bite reaction gif'],
+        'templates': [
+            "🧛 {sender} ne {target} ko pyar se kaat (bite) liya! 😜",
+            "🦷 Ouch! {sender} bit {target}! 😂"
+        ]
+    },
+    'kill': {
+        'api': 'kill',
+        'tenor_queries': ['anime dramatic sword attack defeat gif', 'funny dramatic knockout gif'],
+        'templates': [
+            "⚔️ {sender} ne {target} ka kaam tamam kar diya! 💀😂",
+            "💥 {sender} defeated {target} in an epic battle! 🏆"
+        ]
+    },
+    'slap': {
+        'api': 'slap',
+        'tenor_queries': ['bollywood funny slap drama gif', 'anime funny slap gif'],
+        'templates': [
+            "👋 {sender} ne {target} ko zor ka thappad lagaya! 😱😂"
+        ]
+    },
+    'pat': {
+        'api': 'pat',
+        'tenor_queries': ['korean actress cute head pat smile gif', 'anime cute head pat gif'],
+        'templates': [
+            "🥰 {sender} ne {target} ke sar par pyar se haath fera! ✨"
+        ]
+    },
+    'cuddle': {
+        'api': 'cuddle',
+        'tenor_queries': ['korean drama cute cuddle cozy gif', 'anime cozy cuddle gif'],
+        'templates': [
+            "🧸 {sender} is cuddling tightly with {target}! 💕"
+        ]
+    },
+    'punch': {
+        'api': 'bonk',
+        'tenor_queries': ['anime funny bonk punch gif', 'funny cartoon punch gif'],
+        'templates': [
+            "🥊 {sender} ne {target} ko ek solid punch mara! 💫"
+        ]
+    },
+    'tickle': {
+        'api': 'tickle',
+        'tenor_queries': ['cute girl laughing tickle gif', 'anime funny tickle laugh gif'],
+        'templates': [
+            "🤣 {sender} ne {target} ko gudgudi (tickle) karke hasa-hasa kar lotpot kar diya! 😂"
+        ]
+    }
+}
+
+def resolve_action_target(m):
+    # Supports:
+    # 1. Reply to user's message
+    # 2. Text mention (tapping user without @)
+    # 3. @username (known in DB or public)
+    # 4. Numeric user ID
+    if m.reply_to_message and m.reply_to_message.from_user:
+        tu = m.reply_to_message.from_user
+        remember_user(m.chat.id, tu)
+        return tu.id, user_name(tu)
+
+    for ent in (m.entities or []):
+        if ent.type == 'text_mention' and ent.user:
+            remember_user(m.chat.id, ent.user)
+            return ent.user.id, user_name(ent.user)
+
+    parts = (m.text or '').split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        return None, None
+
+    token = parts[1].strip().split()[0].rstrip(',;!')
+    if token.isdigit():
+        uid = int(token)
+        with DB_LOCK, connect() as c:
+            r = c.execute('SELECT name FROM global_users WHERE user_id=?', (uid,)).fetchone()
+        return uid, (r['name'] if r and r['name'] else f"User {uid}")
+
+    if token.startswith('@'):
+        uname = token.lstrip('@').lower()
+        with DB_LOCK, connect() as c:
+            r = c.execute('SELECT user_id, name FROM global_users WHERE lower(replace(username, "@", ""))=? LIMIT 1', (uname,)).fetchone()
+            if not r:
+                r = c.execute('SELECT user_id, name FROM stats WHERE lower(replace(username, "@", ""))=? ORDER BY last_active DESC LIMIT 1', (uname,)).fetchone()
+        if r:
+            return r['user_id'], (r['name'] or token)
+        return None, token
+
+    return None, parts[1].strip()[:40]
+
+def fetch_action_gif_url(action_key):
+    import urllib.request, urllib.parse
+    spec = ACTION_SPECS[action_key]
+
+    # For /love, /kiss, /hug, /pat, /cuddle, /romance -> 65% chance to fetch Indian/Korean actress reaction GIFs!
+    prefer_actress = action_key in ('love', 'kiss', 'hug', 'pat', 'cuddle', 'romance', 'slap') and (random.random() < 0.65)
+
+    if prefer_actress:
+        query = random.choice(spec['tenor_queries'])
+        # Public Tenor v1 & Giphy/Popcat free reaction endpoints
+        try:
+            q_enc = urllib.parse.quote(query)
+            # Tenor public showcase key LIVDSRZULELA (standard public demo key)
+            t_url = f"https://g.tenor.com/v1/search?q={q_enc}&key=LIVDSRZULELA&limit=15&media_filter=minimal"
+            req = urllib.request.Request(t_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            results = data.get('results') or []
+            if results:
+                pick = random.choice(results)
+                media = (pick.get('media') or [{}])[0]
+                gif_obj = media.get('tinygif') or media.get('gif') or {}
+                if gif_obj.get('url'):
+                    return gif_obj['url']
+        except Exception:
+            pass
+
+    # Anime reaction GIF APIs (waifu.pics + nekos.best)
+    api_tag = spec['api']
+    try:
+        req = urllib.request.Request(f"https://api.waifu.pics/sfw/{api_tag}", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        if data.get('url'):
+            return data['url']
+    except Exception:
+        pass
+
+    try:
+        nb_tag = 'hug' if api_tag in ('blush', 'cuddle') else ('slap' if api_tag == 'bonk' else api_tag)
+        req = urllib.request.Request(f"https://nekos.best/api/v2/{nb_tag}", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        res = data.get('results') or []
+        if res and res[0].get('url'):
+            return res[0]['url']
+    except Exception:
+        pass
+
+    return None
+
+@bot.message_handler(commands=['hug', 'kiss', 'love', 'romance', 'bite', 'kill', 'slap', 'pat', 'cuddle', 'punch', 'tickle'])
+def roleplay_action_cmd(m):
+    if not m.from_user:
+        return
+    cmd = (m.text or '').split()[0].split('@')[0][1:].lower()
+    if cmd not in ACTION_SPECS:
+        return
+
+    t_uid, t_name = resolve_action_target(m)
+    if not t_uid and not t_name:
+        return bot.reply_to(
+            m,
+            f"Usage: Kisi ke message par reply karke <code>/{cmd}</code> likhein, ya <code>/{cmd} @username</code> / User ID dein!"
+        )
+
+    sender_link = f'<a href="tg://user?id={m.from_user.id}">{esc(user_name(m.from_user))}</a>'
+    if t_uid:
+        target_link = f'<a href="tg://user?id={t_uid}">{esc(t_name)}</a>'
+    else:
+        target_link = f'<b>{esc(t_name)}</b>'
+
+    template = random.choice(ACTION_SPECS[cmd]['templates'])
+    caption = template.format(sender=sender_link, target=target_link)
+
+    gif_url = fetch_action_gif_url(cmd)
+    if gif_url:
+        try:
+            bot.send_animation(
+                m.chat.id,
+                gif_url,
+                caption=caption,
+                reply_to_message_id=m.reply_to_message.message_id if m.reply_to_message else m.message_id
+            )
+            return
+        except Exception:
+            log.warning("Failed sending action GIF URL %s", gif_url)
+
+    bot.send_message(
+        m.chat.id,
+        caption,
+        reply_to_message_id=m.reply_to_message.message_id if m.reply_to_message else m.message_id
+    )
 
 # ---------------- XP / LEVELS ----------------
 def xp_level(points):

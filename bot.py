@@ -2024,83 +2024,105 @@ def ai_generate_image(m):
 # ---------------- INTERACTIVE GIF ROLEPLAY ACTIONS (/hug, /kiss, /love, /bite, /kill, etc.) ----------------
 ACTION_SPECS = {
     'hug': {
-        'api': 'hug',
-        'tenor_queries': ['bollywood actress warm hug romantic gif', 'korean drama cute hug gif', 'anime warm hug gif'],
+        'waifu': 'hug',
+        'nekos': 'hug',
+        'otaku': 'hug',
+        'giphy_q': ['bollywood hug romantic', 'korean drama hug cute', 'anime warm hug'],
         'templates': [
             "🤗 {sender} ne {target} ko ek pyara sa warm hug diya! ❤️",
             "🫂 {sender} ne {target} ko gale laga liya! ✨"
         ]
     },
     'kiss': {
-        'api': 'kiss',
-        'tenor_queries': ['bollywood actress flying kiss cute gif', 'korean actress cute kiss heart gif', 'anime sweet kiss gif'],
+        'waifu': 'kiss',
+        'nekos': 'kiss',
+        'otaku': 'kiss',
+        'giphy_q': ['bollywood flying kiss', 'korean actress kiss heart', 'anime sweet kiss'],
         'templates': [
             "💋 {sender} ne {target} ko pyar se kiss kiya! 💕",
             "😘 {sender} sent a sweet flying kiss to {target}! 💖"
         ]
     },
     'love': {
-        'api': 'blush',
-        'tenor_queries': ['indian actress cute heart love blush gif', 'korean actress finger heart love gif', 'bollywood romantic love eye contact gif'],
+        'waifu': 'blush',
+        'nekos': 'blush',
+        'otaku': 'love',
+        'giphy_q': ['bollywood actress love heart', 'korean actress finger heart', 'indian actress romantic smile'],
         'templates': [
             "❤️ {sender} ko {target} se beinteha pyar ho gaya hai! 💘",
             "💞 {sender} is sending pure love & hearts to {target}! 🥰"
         ]
     },
     'romance': {
-        'api': 'blush',
-        'tenor_queries': ['bollywood romantic couple rain dance gif', 'korean drama romantic couple cute gif'],
+        'waifu': 'blush',
+        'nekos': 'hug',
+        'otaku': 'love',
+        'giphy_q': ['bollywood romantic couple', 'korean drama romantic couple'],
         'templates': [
             "🌹 {sender} aur {target} ka romantic moment chal raha hai! ✨❤️"
         ]
     },
     'bite': {
-        'api': 'bite',
-        'tenor_queries': ['anime playful bite gif', 'cute girl playful bite reaction gif'],
+        'waifu': 'bite',
+        'nekos': 'bite',
+        'otaku': 'bite',
+        'giphy_q': ['anime cute bite', 'playful bite funny'],
         'templates': [
             "🧛 {sender} ne {target} ko pyar se kaat (bite) liya! 😜",
             "🦷 Ouch! {sender} bit {target}! 😂"
         ]
     },
     'kill': {
-        'api': 'kill',
-        'tenor_queries': ['anime dramatic sword attack defeat gif', 'funny dramatic knockout gif'],
+        'waifu': 'kill',
+        'nekos': 'shoot',
+        'otaku': 'kill',
+        'giphy_q': ['anime sword attack', 'funny dramatic knockout'],
         'templates': [
             "⚔️ {sender} ne {target} ka kaam tamam kar diya! 💀😂",
             "💥 {sender} defeated {target} in an epic battle! 🏆"
         ]
     },
     'slap': {
-        'api': 'slap',
-        'tenor_queries': ['bollywood funny slap drama gif', 'anime funny slap gif'],
+        'waifu': 'slap',
+        'nekos': 'slap',
+        'otaku': 'slap',
+        'giphy_q': ['bollywood funny slap', 'anime funny slap'],
         'templates': [
             "👋 {sender} ne {target} ko zor ka thappad lagaya! 😱😂"
         ]
     },
     'pat': {
-        'api': 'pat',
-        'tenor_queries': ['korean actress cute head pat smile gif', 'anime cute head pat gif'],
+        'waifu': 'pat',
+        'nekos': 'pat',
+        'otaku': 'pat',
+        'giphy_q': ['korean actress cute smile', 'anime head pat'],
         'templates': [
             "🥰 {sender} ne {target} ke sar par pyar se haath fera! ✨"
         ]
     },
     'cuddle': {
-        'api': 'cuddle',
-        'tenor_queries': ['korean drama cute cuddle cozy gif', 'anime cozy cuddle gif'],
+        'waifu': 'cuddle',
+        'nekos': 'cuddle',
+        'otaku': 'cuddle',
+        'giphy_q': ['korean drama cuddle', 'anime cozy cuddle'],
         'templates': [
             "🧸 {sender} is cuddling tightly with {target}! 💕"
         ]
     },
     'punch': {
-        'api': 'bonk',
-        'tenor_queries': ['anime funny bonk punch gif', 'funny cartoon punch gif'],
+        'waifu': 'bonk',
+        'nekos': 'punch',
+        'otaku': 'punch',
+        'giphy_q': ['anime funny punch', 'cartoon bonk punch'],
         'templates': [
             "🥊 {sender} ne {target} ko ek solid punch mara! 💫"
         ]
     },
     'tickle': {
-        'api': 'tickle',
-        'tenor_queries': ['cute girl laughing tickle gif', 'anime funny tickle laugh gif'],
+        'waifu': 'tickle',
+        'nekos': 'tickle',
+        'otaku': 'tickle',
+        'giphy_q': ['cute girl laughing tickle', 'anime tickle laugh'],
         'templates': [
             "🤣 {sender} ne {target} ko gudgudi (tickle) karke hasa-hasa kar lotpot kar diya! 😂"
         ]
@@ -2108,11 +2130,6 @@ ACTION_SPECS = {
 }
 
 def resolve_action_target(m):
-    # Supports:
-    # 1. Reply to user's message
-    # 2. Text mention (tapping user without @)
-    # 3. @username (known in DB or public)
-    # 4. Numeric user ID
     if m.reply_to_message and m.reply_to_message.from_user:
         tu = m.reply_to_message.from_user
         remember_user(m.chat.id, tu)
@@ -2146,56 +2163,85 @@ def resolve_action_target(m):
 
     return None, parts[1].strip()[:40]
 
-def fetch_action_gif_url(action_key):
+def download_gif_to_buffer(url):
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'image/gif,video/mp4,*/*'
+    })
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        data = resp.read(12 * 1024 * 1024)
+    if not data or len(data) < 2000:
+        return None
+    buf = io.BytesIO(data)
+    low = url.lower()
+    if '.mp4' in low or data[4:8] == b'ftyp':
+        buf.name = 'action.mp4'
+    else:
+        buf.name = 'action.gif'
+    return buf
+
+def fetch_action_gif_urls(action_key):
     import urllib.request, urllib.parse
     spec = ACTION_SPECS[action_key]
+    urls = []
 
-    # For /love, /kiss, /hug, /pat, /cuddle, /romance -> 65% chance to fetch Indian/Korean actress reaction GIFs!
-    prefer_actress = action_key in ('love', 'kiss', 'hug', 'pat', 'cuddle', 'romance', 'slap') and (random.random() < 0.65)
-
-    if prefer_actress:
-        query = random.choice(spec['tenor_queries'])
-        # Public Tenor v1 & Giphy/Popcat free reaction endpoints
+    # 1. Giphy Public Beta Key (dc6zaTOxFJmzC) for Indian/Korean actress & reaction GIFs
+    if action_key in ('love', 'kiss', 'hug', 'pat', 'cuddle', 'romance', 'slap'):
         try:
-            q_enc = urllib.parse.quote(query)
-            # Tenor public showcase key LIVDSRZULELA (standard public demo key)
-            t_url = f"https://g.tenor.com/v1/search?q={q_enc}&key=LIVDSRZULELA&limit=15&media_filter=minimal"
-            req = urllib.request.Request(t_url, headers={'User-Agent': 'Mozilla/5.0'})
+            q_enc = urllib.parse.quote(random.choice(spec['giphy_q']))
+            g_url = f"https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q={q_enc}&limit=15&rating=pg-13"
+            req = urllib.request.Request(g_url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=8) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-            results = data.get('results') or []
-            if results:
-                pick = random.choice(results)
-                media = (pick.get('media') or [{}])[0]
-                gif_obj = media.get('tinygif') or media.get('gif') or {}
-                if gif_obj.get('url'):
-                    return gif_obj['url']
-        except Exception:
-            pass
+            items = data.get('data') or []
+            if items:
+                random.shuffle(items)
+                for it in items[:4]:
+                    imgs = it.get('images') or {}
+                    mp4_u = (imgs.get('downsized_small') or {}).get('mp4') or (imgs.get('original') or {}).get('mp4')
+                    gif_u = (imgs.get('downsized') or {}).get('url') or (imgs.get('fixed_height') or {}).get('url')
+                    if mp4_u:
+                        urls.append(mp4_u)
+                    elif gif_u:
+                        urls.append(gif_u)
+        except Exception as e:
+            log.warning("Giphy fetch skipped: %s", e)
 
-    # Anime reaction GIF APIs (waifu.pics + nekos.best)
-    api_tag = spec['api']
+    # 2. nekos.best API (very reliable anime reaction GIFs)
     try:
-        req = urllib.request.Request(f"https://api.waifu.pics/sfw/{api_tag}", headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(f"https://nekos.best/api/v2/{spec['nekos']}?amount=3", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        for item in (data.get('results') or []):
+            if item.get('url'):
+                urls.append(item['url'])
+    except Exception as e:
+        log.warning("nekos.best fetch skipped: %s", e)
+
+    # 3. waifu.pics API
+    try:
+        req = urllib.request.Request(f"https://api.waifu.pics/sfw/{spec['waifu']}", headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         if data.get('url'):
-            return data['url']
-    except Exception:
-        pass
+            urls.append(data['url'])
+    except Exception as e:
+        log.warning("waifu.pics fetch skipped: %s", e)
 
+    # 4. otakugifs.xyz API
     try:
-        nb_tag = 'hug' if api_tag in ('blush', 'cuddle') else ('slap' if api_tag == 'bonk' else api_tag)
-        req = urllib.request.Request(f"https://nekos.best/api/v2/{nb_tag}", headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(f"https://api.otakugifs.xyz/gif?reaction={spec['otaku']}", headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        res = data.get('results') or []
-        if res and res[0].get('url'):
-            return res[0]['url']
-    except Exception:
-        pass
+        if data.get('url'):
+            urls.append(data['url'])
+    except Exception as e:
+        log.warning("otakugifs fetch skipped: %s", e)
 
-    return None
+    # Shuffle order so actress & anime GIFs mix naturally, while keeping valid URLs
+    random.shuffle(urls)
+    return urls
 
 @bot.message_handler(commands=['hug', 'kiss', 'love', 'romance', 'bite', 'kill', 'slap', 'pat', 'cuddle', 'punch', 'tickle'])
 def roleplay_action_cmd(m):
@@ -2220,25 +2266,25 @@ def roleplay_action_cmd(m):
 
     template = random.choice(ACTION_SPECS[cmd]['templates'])
     caption = template.format(sender=sender_link, target=target_link)
+    reply_mid = m.reply_to_message.message_id if m.reply_to_message else m.message_id
 
-    gif_url = fetch_action_gif_url(cmd)
-    if gif_url:
+    gif_urls = fetch_action_gif_urls(cmd)
+    for g_url in gif_urls[:4]:
         try:
-            bot.send_animation(
-                m.chat.id,
-                gif_url,
-                caption=caption,
-                reply_to_message_id=m.reply_to_message.message_id if m.reply_to_message else m.message_id
-            )
-            return
-        except Exception:
-            log.warning("Failed sending action GIF URL %s", gif_url)
+            gif_buf = download_gif_to_buffer(g_url)
+            if gif_buf:
+                bot.send_animation(
+                    m.chat.id,
+                    gif_buf,
+                    caption=caption,
+                    reply_to_message_id=reply_mid
+                )
+                return
+        except Exception as e:
+            log.warning("Failed uploading GIF %s: %s", g_url, e)
+            continue
 
-    bot.send_message(
-        m.chat.id,
-        caption,
-        reply_to_message_id=m.reply_to_message.message_id if m.reply_to_message else m.message_id
-    )
+    bot.send_message(m.chat.id, caption, reply_to_message_id=reply_mid)
 
 # ---------------- XP / LEVELS ----------------
 def xp_level(points):

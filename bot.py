@@ -367,6 +367,9 @@ if (tg) { tg.ready(); tg.expand(); }
 
 const params = new URLSearchParams(window.location.search);
 let roomId = params.get('room') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || 'default';
+if (String(roomId).startsWith('ch_')) {
+  window.location.replace('/chess3d?room=' + encodeURIComponent(roomId));
+}
 document.getElementById('roomLabel').innerText = 'Room #' + roomId;
 
 // Persistent unique ID per device/session even if Telegram initDataUnsafe is unavailable
@@ -1695,7 +1698,10 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /filters — list filters
 /stopfilter WORD — remove filter
 /antispam on|off — choose threshold/action; /antispam approve|unapprove (reply/ID)
- /antilink on|off /adminlog on|off
+/antilink on|off /adminlog on|off
+/protect — 🛡️ interactive Protection Panel (Night Mode, Anti-NSFW, Anti-Abuse, Anti-Forward, Anti-Channel)
+/nightmode on|off [start_hr end_hr] — 🌙 auto-close chat at night (default 23 to 6 IST)
+/antinsfw on|off /antiabuse on|off /antiforward on|off /antichannel on|off
 
 <b>Welcome & Goodbye (Text + Sticker/GIF/Photo/Video/Audio)</b>
 /setwelcome [TEXT] — reply to sticker/GIF/photo/video/audio or type text
@@ -2199,6 +2205,210 @@ def remove_filter(m):
     with DB_LOCK, connect() as c:
         cur = c.execute('DELETE FROM filters WHERE chat_id=? AND keyword=?', (m.chat.id, key))
     bot.reply_to(m, '✅ Filter removed.' if cur.rowcount else 'Filter not found.')
+
+# ---------------- ADVANCED GROUP PROTECTION (NIGHT MODE, ANTI-NSFW, ANTI-ABUSE, ANTI-FORWARD, ANTI-CHANNEL) ----------------
+from datetime import datetime, timezone, timedelta
+
+IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+NSFW_PATTERNS = re.compile(
+    r'\b(porn|xxx|xvideos|xnxx|pornhub|sex\s*video|nude|nudes|naked|boobs|pussy|dick|cock|hentai|brazzers|onlyfans|chut|lund|randi|chod|chudai|sexchat|call\s*girl)\b',
+    re.I
+)
+ABUSE_PATTERNS = re.compile(
+    r'\b(madarchod|bhenchod|behenchod|bhosdike|bsdk|chutiya|gandu|harami|kamina|kamine|saala|mc|bc|bkl|lodu|laude|gaand)\b',
+    re.I
+)
+
+def is_night_time_now(chat):
+    if setting(chat, 'nightmode', 'off') != 'on':
+        return False
+    # Default Night Mode window: 11:00 PM (23:00) to 6:00 AM (06:00) IST
+    start_h = int(setting(chat, 'night_start', '23') or '23')
+    end_h = int(setting(chat, 'night_end', '6') or '6')
+    now_h = datetime.now(IST_TZ).hour
+    if start_h > end_h:
+        return now_h >= start_h or now_h < end_h
+    return start_h <= now_h < end_h
+
+def check_group_protections(m):
+    chat = m.chat.id
+    uid = m.from_user.id
+    is_adm = admin(chat, uid)
+    is_app = is_lock_approved(chat, uid)
+
+    # 1. Night Mode Check (Admins & /approve users bypass)
+    if not (is_adm or is_app) and is_night_time_now(chat):
+        try:
+            bot.delete_message(chat, m.message_id)
+        except Exception:
+            pass
+        return True
+
+    # 2. Anti-Channel / Sender Chat Check (Admins & /approve users bypass)
+    if not (is_adm or is_app) and setting(chat, 'antichannel', 'off') == 'on' and getattr(m, 'sender_chat', None):
+        if m.sender_chat.id != chat:
+            try:
+                bot.delete_message(chat, m.message_id)
+            except Exception:
+                pass
+            return True
+
+    # 3. Anti-Forward Check (Admins & /approve users bypass)
+    if not (is_adm or is_app) and setting(chat, 'antiforward', 'off') == 'on' and (getattr(m, 'forward_date', None) or getattr(m, 'forward_origin', None)):
+        try:
+            bot.delete_message(chat, m.message_id)
+        except Exception:
+            pass
+        return True
+
+    body = (m.text or m.caption or '').strip()
+    sticker_emoji = (m.sticker.emoji if (m.sticker and getattr(m.sticker, 'emoji', None)) else '')
+    sticker_set = (m.sticker.set_name if (m.sticker and getattr(m.sticker, 'set_name', None)) else '')
+
+    # 4. Anti-NSFW Check (Deletes even for Admins unless explicitly /approve'd!)
+    if not is_app and setting(chat, 'antinsfw', 'off') == 'on':
+        nsfw_hit = False
+        if body and NSFW_PATTERNS.search(body):
+            nsfw_hit = True
+        elif sticker_set and NSFW_PATTERNS.search(sticker_set):
+            nsfw_hit = True
+        elif sticker_emoji in ('🍆', '🍑', '💦', '🔞'):
+            nsfw_hit = True
+        if nsfw_hit:
+            try:
+                bot.delete_message(chat, m.message_id)
+                warn_msg = bot.send_message(
+                    chat,
+                    f"🔞 <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a> NSFW content is strictly prohibited in this group!"
+                )
+                threading.Timer(6, lambda: safe_delete(chat, warn_msg.message_id)).start()
+            except Exception:
+                pass
+            return True
+
+    # 5. Anti-Abuse / Bad Words Filter (Deletes even for Admins unless explicitly /approve'd!)
+    if not is_app and setting(chat, 'antiabuse', 'off') == 'on' and body:
+        if ABUSE_PATTERNS.search(body):
+            try:
+                bot.delete_message(chat, m.message_id)
+                warn_msg = bot.send_message(
+                    chat,
+                    f"🚫 <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a> kripya group mein gaali / abusive language ka prayog na karein!"
+                )
+                threading.Timer(6, lambda: safe_delete(chat, warn_msg.message_id)).start()
+            except Exception:
+                pass
+            return True
+
+    return False
+
+@bot.message_handler(commands=['nightmode'])
+def nightmode_cmd(m):
+    if not need_admin(m): return
+    parts = (m.text or '').split()
+    arg = parts[1].lower() if len(parts) > 1 else ''
+    if arg not in ('on', 'off'):
+        cur = setting(m.chat.id, 'nightmode', 'off')
+        sh = setting(m.chat.id, 'night_start', '23')
+        eh = setting(m.chat.id, 'night_end', '6')
+        return bot.reply_to(
+            m,
+            f"🌙 <b>Night Mode Status:</b> <b>{cur.upper()}</b>\n"
+            f"⏰ Timing: <b>{sh}:00 se {eh}:00 IST</b> (is dauran sirf admins message kar sakte hain)\n\n"
+            f"Usage:\n• <code>/nightmode on</code> ya <code>/nightmode off</code>\n"
+            f"• Custom time: <code>/nightmode on 23 6</code> (11 PM se 6 AM)"
+        )
+    set_setting(m.chat.id, 'nightmode', arg)
+    if arg == 'on':
+        if len(parts) >= 4 and parts[2].isdigit() and parts[3].isdigit():
+            sh = max(0, min(23, int(parts[2])))
+            eh = max(0, min(23, int(parts[3])))
+            set_setting(m.chat.id, 'night_start', str(sh))
+            set_setting(m.chat.id, 'night_end', str(eh))
+        sh = setting(m.chat.id, 'night_start', '23')
+        eh = setting(m.chat.id, 'night_end', '6')
+        done(m, f"🌙 <b>Night Mode ENABLED!</b>\nRoz raat <b>{sh}:00 se subah {eh}:00 IST</b> tak non-admin messages automatically delete honge.")
+    else:
+        done(m, "☀️ <b>Night Mode DISABLED!</b> Ab sabhi members 24x7 chat kar sakte hain.")
+
+@bot.message_handler(commands=['antinsfw', 'antiabuse', 'antiforward', 'antichannel'])
+def protection_toggles_cmd(m):
+    if not need_admin(m): return
+    cmd = (m.text or '').split()[0].split('@')[0][1:].lower()
+    parts = (m.text or '').split()
+    labels = {
+        'antinsfw': '🔞 Anti-NSFW Protection',
+        'antiabuse': '🚫 Anti-Abuse / Bad-Word Filter',
+        'antiforward': '↪️ Anti-Forward Protection',
+        'antichannel': '📢 Anti-Channel (Anonymous Channel Post) Protection',
+    }
+    if len(parts) < 2 or parts[1].lower() not in ('on', 'off'):
+        cur = setting(m.chat.id, cmd, 'off')
+        return bot.reply_to(m, f"{labels[cmd]} is currently <b>{cur.upper()}</b>.\nUsage: <code>/{cmd} on</code> ya <code>/{cmd} off</code>")
+    val = parts[1].lower()
+    set_setting(m.chat.id, cmd, val)
+    done(m, f"✅ {labels[cmd]} <b>{'enabled' if val=='on' else 'disabled'}</b>.")
+
+@bot.message_handler(commands=['protect', 'protection', 'security'])
+def protection_panel_cmd(m):
+    if not need_admin(m): return
+    cid = m.chat.id
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    items = [
+        ('nightmode', '🌙 Night Mode'),
+        ('antinsfw', '🔞 Anti-NSFW'),
+        ('antiabuse', '🚫 Anti-Abuse'),
+        ('antiforward', '↪️ Anti-Forward'),
+        ('antichannel', '📢 Anti-Channel'),
+        ('antilink', '🔗 Anti-Link'),
+        ('antispam', '🛡️ Anti-Spam'),
+    ]
+    lines = ["🛡️ <b>MISHRA GUARD — GROUP PROTECTION PANEL</b>\n"]
+    btns = []
+    for key, label in items:
+        st = setting(cid, key, 'off').upper()
+        icon = "🟢 ON" if st == 'ON' else "🔴 OFF"
+        lines.append(f"• {label}: <b>{icon}</b>")
+        btns.append(types.InlineKeyboardButton(f"{label}: {st}", callback_data=f"prot:{key}"))
+    for i in range(0, len(btns), 2):
+        kb.row(*btns[i:i+2])
+    bot.send_message(cid, "\n".join(lines), reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('prot:'))
+def protection_panel_callback(call):
+    chat = call.message.chat.id
+    if not call.from_user or not admin(chat, call.from_user.id):
+        return bot.answer_callback_query(call.id, '⛔ Sirf group admins hi protection settings badal sakte hain!', show_alert=True)
+    key = call.data.split(':', 1)[1]
+    cur = setting(chat, key, 'off')
+    nxt = 'off' if cur == 'on' else 'on'
+    set_setting(chat, key, nxt)
+    bot.answer_callback_query(call.id, f"✅ {key.upper()} set to {nxt.upper()}")
+
+    items = [
+        ('nightmode', '🌙 Night Mode'),
+        ('antinsfw', '🔞 Anti-NSFW'),
+        ('antiabuse', '🚫 Anti-Abuse'),
+        ('antiforward', '↪️ Anti-Forward'),
+        ('antichannel', '📢 Anti-Channel'),
+        ('antilink', '🔗 Anti-Link'),
+        ('antispam', '🛡️ Anti-Spam'),
+    ]
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    lines = ["🛡️ <b>MISHRA GUARD — GROUP PROTECTION PANEL</b>\n"]
+    btns = []
+    for k, label in items:
+        st = setting(chat, k, 'off').upper()
+        icon = "🟢 ON" if st == 'ON' else "🔴 OFF"
+        lines.append(f"• {label}: <b>{icon}</b>")
+        btns.append(types.InlineKeyboardButton(f"{label}: {st}", callback_data=f"prot:{k}"))
+    for i in range(0, len(btns), 2):
+        kb.row(*btns[i:i+2])
+    try:
+        bot.edit_message_text("\n".join(lines), chat, call.message.message_id, reply_markup=kb)
+    except Exception:
+        pass
 
 # ---------------- COMPLETE LOCK / UNLOCK (ROSE-BOT AUTO-DELETE STYLE) ----------------
 LOCK_TYPES = {'all','media','sticker','photo','video','gif','document','audio','voice','poll','link','forward'}
@@ -3529,7 +3739,7 @@ def pm_auto_download(m):
     elif pin:
         send_download_button(m.chat.id, m.message_id, pin.group(0).rstrip('.,!?)'), 'pinterest')
 
-# ---------------- SMART CHATBOT (TEXT, STICKER & GIF) ----------------
+# ---------------- SMART CHATBOT (OFF BY DEFAULT, CONTINUOUS LEARNING + TEXT/STICKER/GIF REPLY) ----------------
 BOT_NAME_RE = re.compile(r'\b(mishra\s*robot|mishra\s*bot|mishra|robot)\b', re.I)
 
 DEFAULT_CHATBOT_REPLIES = [
@@ -3544,6 +3754,7 @@ DEFAULT_CHATBOT_REPLIES = [
 ]
 
 def learn_chatbot_data(m):
+    # Learns from group reply chains silently even when chatbot is OFF so its vocabulary keeps growing
     if not m.reply_to_message:
         return
     orig_txt = (m.reply_to_message.text or m.reply_to_message.caption or '').strip().lower()
@@ -3560,25 +3771,31 @@ def learn_chatbot_data(m):
         with DB_LOCK, connect() as c:
             c.execute('INSERT INTO chatbot_memory(trigger_text,reply_type,reply_content) VALUES(?,?,?)',
                       (orig_txt, r_type, r_content))
-            c.execute('DELETE FROM chatbot_memory WHERE id NOT IN (SELECT id FROM chatbot_memory ORDER BY id DESC LIMIT 3000)')
+            c.execute('DELETE FROM chatbot_memory WHERE id NOT IN (SELECT id FROM chatbot_memory ORDER BY id DESC LIMIT 4000)')
 
-def get_chatbot_response(query_text):
+def get_chatbot_response(query_text, strict_match_only=False):
     clean = re.sub(r'\s+', ' ', query_text.lower()).strip()
     with DB_LOCK, connect() as c:
         rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text=? ORDER BY RANDOM() LIMIT 1', (clean,)).fetchall()
-        if not rows and len(clean) >= 4:
+        if not rows and len(clean) >= 3:
             stripped = BOT_NAME_RE.sub('', clean).strip(' ,.!?')
             if stripped:
-                rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text LIKE ? ORDER BY RANDOM() LIMIT 1', (f'%{stripped}%',)).fetchall()
-        if not rows:
-            if random.random() < 0.35:
+                rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text=? ORDER BY RANDOM() LIMIT 1', (stripped,)).fetchall()
+                if not rows and len(stripped) >= 4:
+                    rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory WHERE trigger_text LIKE ? ORDER BY RANDOM() LIMIT 1', (f'%{stripped}%',)).fetchall()
+        if not rows and not strict_match_only:
+            if random.random() < 0.40:
                 rows = c.execute('SELECT reply_type,reply_content FROM chatbot_memory ORDER BY RANDOM() LIMIT 1').fetchall()
     if rows:
         return rows[0]['reply_type'], rows[0]['reply_content']
+    if strict_match_only:
+        return None, None
     return 'text', random.choice(DEFAULT_CHATBOT_REPLIES)
 
-def send_chatbot_reply(m, query_text):
-    r_type, r_content = get_chatbot_response(query_text)
+def send_chatbot_reply(m, query_text, strict_match_only=False):
+    r_type, r_content = get_chatbot_response(query_text, strict_match_only=strict_match_only)
+    if not r_type or not r_content:
+        return False
     try:
         if r_type == 'sticker':
             bot.send_sticker(m.chat.id, r_content, reply_to_message_id=m.message_id)
@@ -3586,18 +3803,26 @@ def send_chatbot_reply(m, query_text):
             bot.send_animation(m.chat.id, r_content, reply_to_message_id=m.message_id)
         else:
             bot.reply_to(m, esc(r_content))
+        return True
     except Exception:
-        bot.reply_to(m, random.choice(DEFAULT_CHATBOT_REPLIES))
+        if not strict_match_only:
+            bot.reply_to(m, random.choice(DEFAULT_CHATBOT_REPLIES))
+        return False
 
 @bot.message_handler(commands=['chatbot'])
 def chatbot_toggle(m):
     if not need_admin(m): return
     p = (m.text or '').split()
     if len(p) < 2 or p[1].lower() not in ('on', 'off'):
-        cur = setting(m.chat.id, 'chatbot', 'on')
-        return bot.reply_to(m, f'🤖 Chatbot is currently <b>{cur.upper()}</b>.\nUsage: <code>/chatbot on</code> or <code>/chatbot off</code>')
+        cur = setting(m.chat.id, 'chatbot', 'off')
+        return bot.reply_to(
+            m,
+            f'🤖 Chatbot is currently <b>{cur.upper()}</b> in this group.\n'
+            f'Usage: <code>/chatbot on</code> ya <code>/chatbot off</code>\n'
+            f'<i>(Note: Chatbot har group mein default OFF rehta hai, /chatbot on karne par hi reply dega aur group messages se seekhta rahega.)</i>'
+        )
     set_setting(m.chat.id, 'chatbot', p[1].lower())
-    bot.reply_to(m, f'🤖 Chatbot <b>{"enabled" if p[1].lower()=="on" else "disabled"}</b>.')
+    bot.reply_to(m, f'🤖 Chatbot <b>{"enabled" if p[1].lower()=="on" else "disabled"}</b> for this group.')
 
 # ---------------- SECRET WHISPER SYSTEM (INLINE + BUTTONS + 3 MODES) ----------------
 def save_whisper(sender_id, sender_name, mode, target_key, secret_text):
@@ -5279,8 +5504,10 @@ def monitor(m):
     chat, uid = m.chat.id, m.from_user.id
     record(m)
 
-    # 1. Rose-bot style auto-delete locks (Admin & /approve users bypass)
+    # 1. Rose-bot style auto-delete locks & Group Protection Suite (Night Mode, Anti-NSFW, Anti-Abuse, etc.)
     if check_and_enforce_lock(m):
+        return
+    if check_group_protections(m):
         return
 
     body = (m.text or m.caption or '').strip()
@@ -5396,8 +5623,8 @@ def monitor(m):
                 elif af['media_type'] == 'animation': bot.send_animation(chat, af['media_file_id'], reply_to_message_id=m.message_id)
         except Exception: log.exception('AFK notice failed')
 
-    # 4. Chatbot trigger: when someone says "Mishra robot" or replies to bot's message
-    if setting(chat, 'chatbot', 'on') == 'on' and not body.startswith('/'):
+    # 4. Chatbot trigger: OFF by default per group; when ON in this group, replies using learned group text/stickers/GIFs
+    if setting(chat, 'chatbot', 'off') == 'on' and not body.startswith('/'):
         replied_to_bot = False
         try:
             if m.reply_to_message and m.reply_to_message.from_user and m.reply_to_message.from_user.id == bot.get_me().id:
@@ -5405,7 +5632,10 @@ def monitor(m):
         except Exception:
             pass
         if (body and BOT_NAME_RE.search(body)) or replied_to_bot:
-            send_chatbot_reply(m, body or 'hi')
+            send_chatbot_reply(m, body or 'hi', strict_match_only=False)
+        elif body and len(body) <= 60:
+            # Also reply naturally when someone says a phrase the bot has learned from group chats!
+            send_chatbot_reply(m, body, strict_match_only=True)
 
 # ---------------- STARTUP ----------------
 def main():

@@ -1005,6 +1005,599 @@ def handle_3d_ludo_post(data):
 
     return room
 
+# ---------------- ROYAL 3D CHESS MINI APP HOST (/chess3d & /api/chess3d) ----------------
+CHESS3D_ROOMS = {}
+CHESS3D_LOCK = threading.Lock()
+
+CHESS3D_HTML = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mishra Royal 3D Chess</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    background: radial-gradient(circle at 50% 10%, #243447 0%, #101722 65%, #070a10 100%);
+    color: #fff; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden;
+  }
+  .header {
+    width: 100%; max-width: 440px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.06); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,215,0,0.22);
+  }
+  .title { font-weight: 900; font-size: 16px; letter-spacing: 0.6px; color: #ffd54f; text-shadow: 0 2px 10px rgba(255,213,79,0.5); }
+  .header-right { display: flex; align-items: center; gap: 7px; }
+  .room-badge { font-size: 11px; background: rgba(43,58,103,0.95); padding: 4px 10px; border-radius: 14px; color: #90caf9; font-weight: 700; border: 1px solid rgba(144,202,249,0.3); }
+  .sound-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; border-radius: 50%; width: 30px; height: 30px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .players-bar {
+    width: 100%; max-width: 440px; display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 8px; padding: 8px 12px;
+  }
+  .p-card {
+    background: linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+    border-radius: 16px; padding: 8px 11px;
+    display: flex; align-items: center; justify-content: space-between;
+    border: 2px solid rgba(255,255,255,0.08); transition: all 0.28s ease;
+  }
+  .p-card.active {
+    border-color: #ffd54f; background: linear-gradient(145deg, rgba(255,213,79,0.28), rgba(255,152,0,0.12));
+    box-shadow: 0 0 20px rgba(255, 213, 79, 0.45); transform: translateY(-2px) scale(1.02);
+  }
+  .p-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .piece-dot {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; font-weight: 900;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.5);
+  }
+  .p-name { font-size: 12px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 115px; }
+  .p-tag { font-size: 10px; color: #ffd54f; font-weight: 800; }
+
+  .board-stage {
+    width: 94vw; max-width: 416px; aspect-ratio: 1 / 1;
+    margin: 4px auto; perspective: 1100px;
+  }
+  .board-wrap {
+    width: 100%; height: 100%; padding: 12px; border-radius: 26px;
+    background: linear-gradient(145deg, #6d3b1e, #361909);
+    box-shadow: 0 26px 50px rgba(0,0,0,0.82), 0 6px 0 #1f0d04, inset 0 2px 6px rgba(255,224,178,0.4);
+    transform: rotateX(9deg);
+  }
+  canvas {
+    width: 100%; height: 100%; display: block; border-radius: 14px;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.45);
+  }
+
+  .controls {
+    width: 100%; max-width: 440px; padding: 10px 14px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .status-msg {
+    font-size: 13px; font-weight: 700; color: #fff8e1; text-align: center;
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16);
+    padding: 8px 14px; border-radius: 22px; width: 100%;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+  }
+  .btn-row { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; flex-wrap: wrap; }
+  .btn {
+    border: none; border-radius: 18px; padding: 12px 20px; font-size: 14px; font-weight: 800;
+    cursor: pointer; color: #fff; box-shadow: 0 7px 16px rgba(0,0,0,0.42); transition: transform 0.15s;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn-join { background: linear-gradient(135deg, #00b894, #00cec9); }
+  .btn-ai { background: linear-gradient(135deg, #fdcb6e, #e17055); color: #1e272e; }
+  .btn-flip { background: linear-gradient(135deg, #6c5ce7, #8e44ad); }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">♟️ MISHRA ROYAL 3D CHESS</div>
+    <div class="header-right">
+      <div class="room-badge" id="roomLabel">Room: ...</div>
+      <button class="sound-btn" id="soundBtn" onclick="toggleSound()">🔊</button>
+    </div>
+  </div>
+
+  <div class="players-bar" id="playersBar"></div>
+
+  <div class="board-stage">
+    <div class="board-wrap">
+      <canvas id="chessCanvas" width="640" height="640"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="status-msg" id="statusMsg">Loading 3D Chess Arena...</div>
+    <div class="btn-row" id="actionRow"></div>
+  </div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const params = new URLSearchParams(window.location.search);
+let roomId = params.get('room') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || 'default';
+document.getElementById('roomLabel').innerText = 'Room #' + roomId;
+
+function resolveCurrentUser() {
+  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+    return { id: String(tg.initDataUnsafe.user.id), name: tg.initDataUnsafe.user.first_name || 'Player' };
+  }
+  let savedId = localStorage.getItem('mishra_chess_uid');
+  let savedName = localStorage.getItem('mishra_chess_uname');
+  if (!savedId) {
+    savedId = 'guest_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    savedName = 'Guest_' + Math.floor(100 + Math.random() * 900);
+    localStorage.setItem('mishra_chess_uid', savedId);
+    localStorage.setItem('mishra_chess_uname', savedName);
+  }
+  return { id: savedId, name: savedName };
+}
+const user = resolveCurrentUser();
+
+let soundOn = true;
+function toggleSound() {
+  soundOn = !soundOn;
+  document.getElementById('soundBtn').innerText = soundOn ? '🔊' : '🔇';
+}
+function playTone(freq, dur, type='sine') {
+  if (!soundOn) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.11, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + dur);
+  } catch (e) {}
+}
+
+const PIECE_GLYPHS = {
+  wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
+  bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟'
+};
+const PIECE_VALS = { p: 10, n: 30, b: 30, r: 50, q: 90, k: 900 };
+
+let state = null;
+let chess = new Chess();
+let selectedSq = null;
+let legalTargets = [];
+let flipped = false;
+let actionBusy = false;
+let pulsePhase = 0;
+
+const canvas = document.getElementById('chessCanvas');
+const ctx = canvas.getContext('2d');
+
+function sqToCoords(r, c) {
+  const dr = flipped ? (7 - r) : r;
+  const dc = flipped ? (7 - c) : c;
+  return { x: dc * 80, y: dr * 80 };
+}
+
+function coordsToSq(px, py) {
+  const dc = Math.floor(px / 80);
+  const dr = Math.floor(py / 80);
+  if (dc < 0 || dc > 7 || dr < 0 || dr > 7) return null;
+  const r = flipped ? (7 - dr) : dr;
+  const c = flipped ? (7 - dc) : dc;
+  const file = String.fromCharCode(97 + c);
+  const rank = 8 - r;
+  return file + rank;
+}
+
+function draw3DChessPiece(cx, cy, color, type, isSelected) {
+  const lift = isSelected ? 6 + Math.sin(pulsePhase) * 3 : 0;
+  const py = cy - lift;
+  const rad = 28;
+
+  // Ground shadow
+  ctx.beginPath(); ctx.ellipse(cx + 3, cy + 22, rad * 0.85, rad * 0.36, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+
+  // 3D Sculpted Pedestal Base
+  ctx.beginPath(); ctx.arc(cx, py + 4, rad, 0, Math.PI * 2);
+  ctx.fillStyle = color === 'w' ? '#b0bec5' : '#0d1117'; ctx.fill();
+
+  const grad = ctx.createRadialGradient(cx - 10, py - 12, 3, cx, py, rad);
+  if (color === 'w') {
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.55, '#f5f7fa');
+    grad.addColorStop(1, '#cfd8dc');
+  } else {
+    grad.addColorStop(0, '#607d8b');
+    grad.addColorStop(0.45, '#263238');
+    grad.addColorStop(1, '#0a0e14');
+  }
+  ctx.beginPath(); ctx.arc(cx, py, rad * 0.94, 0, Math.PI * 2);
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.strokeStyle = color === 'w' ? '#ffffff' : '#90a4ae';
+  ctx.lineWidth = 2; ctx.stroke();
+
+  // Inner gold ring for King & Queen
+  if (type === 'k' || type === 'q') {
+    ctx.beginPath(); ctx.arc(cx, py, rad * 0.76, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 1.8; ctx.stroke();
+  }
+
+  const glyph = PIECE_GLYPHS[color + type.toUpperCase()] || '♟';
+  ctx.font = 'bold 34px serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = color === 'w' ? '#1e272e' : '#ffffff';
+  ctx.fillText(glyph, cx, py + 2);
+}
+
+function drawBoard() {
+  ctx.clearRect(0, 0, 640, 640);
+  const board = chess.board();
+  const lastMv = state && state.last_move ? state.last_move : null;
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const { x, y } = sqToCoords(r, c);
+      const isLight = (r + c) % 2 === 0;
+      const sqName = String.fromCharCode(97 + c) + (8 - r);
+
+      ctx.fillStyle = isLight ? '#f3e5ab' : '#8d5524';
+      ctx.fillRect(x, y, 80, 80);
+
+      // Subtle wood/marble bevel
+      ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, 79, 79);
+
+      if (lastMv && (lastMv.from === sqName || lastMv.to === sqName)) {
+        ctx.fillStyle = 'rgba(255, 235, 59, 0.38)';
+        ctx.fillRect(x, y, 80, 80);
+      }
+      if (selectedSq === sqName) {
+        ctx.fillStyle = 'rgba(0, 230, 118, 0.42)';
+        ctx.fillRect(x, y, 80, 80);
+      }
+
+      // Draw legal move indicator
+      if (legalTargets.includes(sqName)) {
+        const targetPiece = board[r][c];
+        if (targetPiece) {
+          ctx.beginPath(); ctx.arc(x + 40, y + 40, 34, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 82, 82, 0.85)'; ctx.lineWidth = 5; ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.arc(x + 40, y + 40, 13, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0, 230, 118, 0.75)'; ctx.fill();
+        }
+      }
+
+      const piece = board[r][c];
+      if (piece) {
+        draw3DChessPiece(x + 40, y + 40, piece.color, piece.type, selectedSq === sqName);
+      }
+    }
+  }
+}
+
+function animLoop() {
+  pulsePhase += 0.12;
+  drawBoard();
+  requestAnimationFrame(animLoop);
+}
+requestAnimationFrame(animLoop);
+
+function myColor() {
+  if (!state) return null;
+  if (state.white && String(state.white.uid) === String(user.id)) return 'w';
+  if (state.black && String(state.black.uid) === String(user.id)) return 'b';
+  return null;
+}
+
+function computeBotMove() {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+  let best = moves[0];
+  let bestScore = -9999;
+  for (const mv of moves) {
+    let score = Math.random() * 4;
+    if (mv.captured) score += (PIECE_VALS[mv.captured] || 10) * 10;
+    if (mv.promotion) score += 80;
+    chess.move(mv);
+    if (chess.in_checkmate()) score += 9999;
+    else if (chess.in_check()) score += 15;
+    chess.undo();
+    if (score > bestScore) { bestScore = score; best = mv; }
+  }
+  return best;
+}
+
+canvas.addEventListener('click', (e) => {
+  if (!state || !state.started || state.over || actionBusy) return;
+  const mine = myColor();
+  if (!mine || chess.turn() !== mine) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (640 / rect.width);
+  const py = (e.clientY - rect.top) * (640 / rect.height);
+  const sq = coordsToSq(px, py);
+  if (!sq) return;
+
+  if (selectedSq && legalTargets.includes(sq)) {
+    const mvObj = chess.move({ from: selectedSq, to: sq, promotion: 'q' });
+    if (mvObj) {
+      selectedSq = null;
+      legalTargets = [];
+      playTone(mvObj.captured ? 320 : 540, 0.14, 'triangle');
+      let statusTag = 'playing';
+      let winnerColor = '';
+      if (chess.in_checkmate()) {
+        statusTag = 'checkmate';
+        winnerColor = mine;
+      } else if (chess.in_draw() || chess.in_stalemate() || chess.in_threefold_repetition()) {
+        statusTag = 'draw';
+      }
+      sendMove(chess.fen(), { from: mvObj.from, to: mvObj.to }, statusTag, winnerColor);
+      return;
+    }
+  }
+
+  const piece = chess.get(sq);
+  if (piece && piece.color === mine) {
+    selectedSq = sq;
+    legalTargets = chess.moves({ square: sq, verbose: true }).map(m => m.to);
+    playTone(680, 0.06);
+  } else {
+    selectedSq = null;
+    legalTargets = [];
+  }
+});
+
+function renderUI() {
+  if (!state) return;
+  if (state.fen) chess.load(state.fen);
+
+  const bar = document.getElementById('playersBar');
+  bar.innerHTML = '';
+  const slots = [
+    { role: 'w', label: 'White ♔', p: state.white, bg: '#ffffff', fg: '#1e272e' },
+    { role: 'b', label: 'Black ♚', p: state.black, bg: '#263238', fg: '#ffffff' }
+  ];
+  slots.forEach(s => {
+    const isTurn = state.started && !state.over && chess.turn() === s.role;
+    const card = document.createElement('div');
+    card.className = 'p-card' + (isTurn ? ' active' : '');
+    const pname = s.p ? s.p.name : 'Waiting...';
+    card.innerHTML = `
+      <div class="p-info">
+        <div class="piece-dot" style="background:${s.bg};color:${s.fg}">${s.role === 'w' ? '♔' : '♚'}</div>
+        <div>
+          <div class="p-name">${pname}</div>
+          <div class="p-tag">${isTurn ? '🎯 TURN' : s.label}</div>
+        </div>
+      </div>
+    `;
+    bar.appendChild(card);
+  });
+
+  const statusEl = document.getElementById('statusMsg');
+  const actionRow = document.getElementById('actionRow');
+  actionRow.innerHTML = '';
+  const mine = myColor();
+
+  if (!state.started) {
+    statusEl.innerText = state.last_log || 'White aur Black players join karein!';
+    if (!mine && (!state.white || !state.black)) {
+      const btnJ = document.createElement('button');
+      btnJ.className = 'btn btn-join';
+      btnJ.innerText = !state.white ? '♔ Join as White' : '♚ Join as Black';
+      btnJ.onclick = () => sendAction('join');
+      actionRow.appendChild(btnJ);
+    }
+    if (state.white && !state.black) {
+      const btnAI = document.createElement('button');
+      btnAI.className = 'btn btn-ai';
+      btnAI.innerText = '🤖 Play vs AI Bot';
+      btnAI.onclick = () => sendAction('vs_ai');
+      actionRow.appendChild(btnAI);
+    }
+  } else if (state.over) {
+    statusEl.innerText = state.last_log || 'Match Over!';
+    const btnR = document.createElement('button');
+    btnR.className = 'btn btn-join';
+    btnR.innerText = '🔄 New 3D Chess Match';
+    btnR.onclick = () => sendAction('rematch');
+    actionRow.appendChild(btnR);
+  } else {
+    const turnName = chess.turn() === 'w' ? state.white.name : state.black.name;
+    const chk = chess.in_check() ? ' ⚠️ CHECK!' : '';
+    if (mine && chess.turn() === mine) {
+      statusEl.innerText = `👉 Aapki baari hai (${mine === 'w' ? 'White' : 'Black'})!${chk}`;
+    } else {
+      statusEl.innerText = `⏳ ${turnName} ki baari hai...${chk}`;
+    }
+
+    const btnFlip = document.createElement('button');
+    btnFlip.className = 'btn btn-flip';
+    btnFlip.innerText = '🔄 Flip Board';
+    btnFlip.onclick = () => { flipped = !flipped; };
+    actionRow.appendChild(btnFlip);
+
+    // If vs AI and it's Black's turn, make AI move automatically
+    if (state.vs_ai && chess.turn() === 'b' && !actionBusy) {
+      actionBusy = true;
+      setTimeout(() => {
+        const aiMv = computeBotMove();
+        if (aiMv) {
+          chess.move(aiMv);
+          let st = 'playing', wc = '';
+          if (chess.in_checkmate()) { st = 'checkmate'; wc = 'b'; }
+          else if (chess.in_draw() || chess.in_stalemate()) { st = 'draw'; }
+          actionBusy = false;
+          sendMove(chess.fen(), { from: aiMv.from, to: aiMv.to }, st, wc, true);
+        } else {
+          actionBusy = false;
+        }
+      }, 550);
+    }
+  }
+}
+
+async function fetchState() {
+  if (actionBusy) return;
+  try {
+    const res = await fetch(`/api/chess3d?room=${encodeURIComponent(roomId)}`);
+    if (res.ok) {
+      state = await res.json();
+      if (myColor() === 'b' && !state.vs_ai) flipped = true;
+      renderUI();
+    }
+  } catch (e) {}
+}
+
+async function sendAction(action) {
+  if (actionBusy) return;
+  actionBusy = true;
+  try {
+    const res = await fetch('/api/chess3d', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: roomId, action, uid: String(user.id), name: user.name })
+    });
+    if (res.ok) state = await res.json();
+  } catch (e) {}
+  actionBusy = false;
+  renderUI();
+}
+
+async function sendMove(fen, lastMove, statusTag, winnerColor, isAi = false) {
+  if (actionBusy) return;
+  actionBusy = true;
+  try {
+    const res = await fetch('/api/chess3d', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: roomId,
+        action: 'move',
+        uid: isAi ? 'AI_BOT' : String(user.id),
+        fen,
+        last_move: lastMove,
+        status_tag: statusTag,
+        winner_color: winnerColor
+      })
+    });
+    if (res.ok) state = await res.json();
+  } catch (e) {}
+  actionBusy = false;
+  renderUI();
+}
+
+fetchState();
+setInterval(fetchState, 1400);
+</script>
+</body>
+</html>'''
+
+START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+def get_or_create_chess_room(room_id):
+    with CHESS3D_LOCK:
+        now = time.time()
+        for k in list(CHESS3D_ROOMS.keys()):
+            if now - CHESS3D_ROOMS[k].get('ts', 0) > 7200:
+                CHESS3D_ROOMS.pop(k, None)
+        if room_id not in CHESS3D_ROOMS:
+            CHESS3D_ROOMS[room_id] = {
+                'room': room_id,
+                'white': None,
+                'black': None,
+                'vs_ai': False,
+                'started': False,
+                'over': False,
+                'fen': START_FEN,
+                'last_move': None,
+                'last_log': 'Table ready! White aur Black join karein.',
+                'ts': now
+            }
+        return CHESS3D_ROOMS[room_id]
+
+def handle_3d_chess_post(data):
+    room_id = str(data.get('room', 'default'))[:24]
+    action = str(data.get('action', ''))
+    uid = str(data.get('uid', '')).strip()
+    uname = str(data.get('name', 'Player'))[:24]
+
+    room = get_or_create_chess_room(room_id)
+    if not uid:
+        return room
+
+    with CHESS3D_LOCK:
+        room['ts'] = time.time()
+        if action == 'rematch':
+            room['white'] = {'uid': uid, 'name': uname}
+            room['black'] = None
+            room['vs_ai'] = False
+            room['started'] = False
+            room['over'] = False
+            room['fen'] = START_FEN
+            room['last_move'] = None
+            room['last_log'] = f"{uname} (White) ne naya Chess table banaya!"
+            return room
+
+        if action == 'join':
+            if room['started']:
+                return room
+            if room['white'] is None:
+                room['white'] = {'uid': uid, 'name': uname}
+                room['last_log'] = f"{uname} White ♔ bane! Black ka intezar..."
+            elif str(room['white']['uid']) != uid and room['black'] is None:
+                room['black'] = {'uid': uid, 'name': uname}
+                room['started'] = True
+                room['last_log'] = f"Match shuru! {room['white']['name']} (White) ki pehli chaal."
+            return room
+
+        if action == 'vs_ai':
+            if not room['started'] and room['white'] and str(room['white']['uid']) == uid:
+                room['black'] = {'uid': 'AI_BOT', 'name': 'Mishra AI ♚'}
+                room['vs_ai'] = True
+                room['started'] = True
+                room['last_log'] = f"AI Match shuru! {room['white']['name']} ki chaal."
+            return room
+
+        if action == 'move' and room['started'] and not room['over']:
+            fen = str(data.get('fen', '')).strip()
+            if not fen:
+                return room
+            room['fen'] = fen
+            room['last_move'] = data.get('last_move')
+            st_tag = str(data.get('status_tag', 'playing'))
+            w_col = str(data.get('winner_color', ''))
+
+            if st_tag == 'checkmate':
+                room['over'] = True
+                win_p = room['white'] if w_col == 'w' else room['black']
+                w_name = win_p['name'] if win_p else 'Winner'
+                w_uid = str(win_p['uid']) if win_p else ''
+                room['last_log'] = f"🏆 CHECKMATE! {w_name} jeet gaye (+100 Coins)!"
+                if w_uid.isdigit():
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (int(w_uid), ''))
+                        c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (int(w_uid),))
+            elif st_tag == 'draw':
+                room['over'] = True
+                room['last_log'] = "🤝 Match Draw! Koi nahi jeeta."
+            else:
+                turn_char = fen.split()[1] if len(fen.split()) > 1 else 'w'
+                nxt = room['white']['name'] if turn_char == 'w' else room['black']['name']
+                room['last_log'] = f"Ab {nxt} ki baari hai."
+            return room
+
+    return room
+
 class Health(BaseHTTPRequestHandler):
     def _send_bytes(self, status, body, ctype='text/plain; charset=utf-8'):
         self.send_response(status)
@@ -1028,6 +1621,13 @@ class Health(BaseHTTPRequestHandler):
             room_id = (qs.get('room') or ['default'])[0][:24]
             room = get_or_create_3d_room(room_id)
             self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
+        elif path == '/chess3d':
+            self._send_bytes(200, CHESS3D_HTML.encode('utf-8'), 'text/html; charset=utf-8')
+        elif path == '/api/chess3d':
+            qs = parse_qs(parsed.query)
+            room_id = (qs.get('room') or ['default'])[0][:24]
+            room = get_or_create_chess_room(room_id)
+            self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
         else:
             self._send_bytes(404, b'Not found')
 
@@ -1042,6 +1642,15 @@ class Health(BaseHTTPRequestHandler):
                 raw = self.rfile.read(min(length, 8192)).decode('utf-8')
                 data = json.loads(raw) if raw else {}
                 room = handle_3d_ludo_post(data)
+                self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
+            except Exception as e:
+                self._send_bytes(400, json.dumps({'error': str(e)}).encode('utf-8'), 'application/json')
+        elif parsed.path == '/api/chess3d':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                raw = self.rfile.read(min(length, 8192)).decode('utf-8')
+                data = json.loads(raw) if raw else {}
+                room = handle_3d_chess_post(data)
                 self._send_bytes(200, json.dumps(room).encode('utf-8'), 'application/json')
             except Exception as e:
                 self._send_bytes(400, json.dumps({'error': str(e)}).encode('utf-8'), 'application/json')
@@ -1101,9 +1710,14 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 <b>New Features & Games</b>
 /chatbot on|off — smart auto-reply (text, sticker & GIF) when called
 /whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
-/ludo — 🎲 3D Ludo King Mini App (+100 coins)
+/ludo — 🎲 Royal 3D Ludo King Mini App (+100 coins)
+/chess — ♟️ Royal 3D Chess Mini App 1v1 / vs AI (+100 coins)
+/spy — 🕵️ Undercover Spy Game (Host-start + Turn-by-Turn Chat Clues + Voting)
+/wordchain /wc — 🔤 Live Word Chain Elimination Game (+60 coins)
 /handcricket /hc — 🏏 2-Player Hand Cricket group game (+50 coins)
-/spy — 🕵️ Undercover Spy Word Game for 3-10 players (+80 coins)
+/rps — 🪨📄✂️ Rock-Paper-Scissors 1v1 Duel (+30 coins)
+/fasttype /race — ⚡ Anti-Copy Fast Typing Race (+40 coins)
+/tod — 🍾 Spin-the-Bottle Truth & Dare Wheel
 /ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
 /cricket [on|off] — unlimited AI hard cricket quiz & auto toggle
@@ -1123,10 +1737,18 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 @bot.message_handler(commands=['start', 'help', 'panel'])
 def help_cmd(m):
     parts = (m.text or '').split(maxsplit=1)
-    if len(parts) > 1 and parts[1].strip().startswith(('gc_', 'dm_')):
+    if len(parts) > 1 and parts[1].strip().startswith(('gc_', 'dm_', 'ch_')):
         room_id = parts[1].strip()[:24]
         base = get_public_webapp_base()
         if base:
+            if room_id.startswith('ch_'):
+                kb = types.InlineKeyboardMarkup()
+                kb.add(types.InlineKeyboardButton('♟️ Launch Royal 3D Chess Now', web_app=types.WebAppInfo(url=f"{base}/chess3d?room={room_id}")))
+                return bot.send_message(
+                    m.chat.id,
+                    f"♟️ <b>ROYAL 3D CHESS ROOM READY!</b>\nRoom ID: <code>{esc(room_id)}</code>\n\nNiche button dabakar 3D Chess Board open karein:",
+                    reply_markup=kb
+                )
             kb = types.InlineKeyboardMarkup()
             kb.add(types.InlineKeyboardButton('🎮 Launch 3D Ludo King Now', web_app=types.WebAppInfo(url=f"{base}/ludo3d?room={room_id}")))
             return bot.send_message(
@@ -3872,26 +4494,72 @@ def hc_callback(call):
             except Exception:
                 pass
 
-# ---------------- GROUP GAME 2: UNDERCOVER SPY WORD GAME (/spy) ----------------
+# ---------------- ROYAL 3D CHESS MINI APP LAUNCHER (/chess) ----------------
+@bot.message_handler(commands=['chess', '3dchess'])
+def chess_cmd(m):
+    base = get_public_webapp_base()
+    if not base:
+        return bot.reply_to(
+            m,
+            "⚠️ <b>3D Chess Mini App URL set nahi hai!</b>\n"
+            "Render Environment mein <code>WEBAPP_URL</code> add karein."
+        )
+    bot_uname = ''
+    try:
+        bot_uname = bot.get_me().username
+    except Exception:
+        pass
+
+    if not group(m):
+        room_id = f"ch_{m.from_user.id}"
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton('♟️ Open Royal 3D Chess', web_app=types.WebAppInfo(url=f"{base}/chess3d?room={room_id}")))
+        return bot.reply_to(
+            m,
+            "♟️ <b>MISHRA ROYAL 3D CHESS</b> ♟️\n"
+            "Niche button dabakar 3D Chess Board open karein:",
+            reply_markup=kb
+        )
+
+    room_id = f"ch_{abs(m.chat.id)}_{uuid.uuid4().hex[:4]}"
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    if bot_uname:
+        kb.add(types.InlineKeyboardButton('♟️ Play Royal 3D Chess (1v1 / vs AI)', url=f"https://t.me/{bot_uname}?startapp={room_id}"))
+    else:
+        kb.add(types.InlineKeyboardButton('♟️ Play Royal 3D Chess (1v1 / vs AI)', url=f"{base}/chess3d?room={room_id}"))
+
+    bot.send_message(
+        m.chat.id,
+        f"♟️ <b>MISHRA ROYAL 3D CHESS ARENA</b> ♟️\n\n"
+        f"🆔 <b>Room ID:</b> <code>{room_id}</code>\n"
+        f"✨ <i>Sculpted 3D Pieces, Legal Move Highlights, Check/Checkmate & vs AI Mode!</i>\n"
+        f"🏆 Winner ko milenge <b>+100 Coins</b>!\n\n"
+        f"👇 <i>White aur Black players niche button dabakar 3D Board join karein:</i>",
+        reply_markup=kb
+    )
+
+# ---------------- GROUP GAME 2: UPGRADED UNDERCOVER SPY GAME (/spy) ----------------
 SPY_WORD_PAIRS = [
-    ("Chai ☕", "Coffee ☕"),
-    ("Virat Kohli 🏏", "Rohit Sharma 🏏"),
-    ("Taj Mahal 🕌", "Red Fort 🏰"),
-    ("Instagram 📱", "Snapchat 👻"),
-    ("Samosa 🥟", "Kachori 🍘"),
-    ("Pubg / BGMI 🎮", "Free Fire 🔥"),
-    ("Goa Beach 🏖️", "Manali Mountains 🏔️"),
-    ("Train 🚆", "Metro 🚇"),
-    ("Pizza 🍕", "Burger 🍔"),
-    ("Cinema Hall 🎬", "Netflix 📺"),
-    ("Cricket Bat 🏏", "Badminton Racket 🏸"),
-    ("Wedding (Shaadi) 💍", "Birthday Party 🎂"),
-    ("Hospital 🏥", "School 🏫"),
-    ("Vrindavan 🕉️", "Ayodhya 🚩"),
-    ("Apple iPhone 🍏", "Samsung Galaxy 📱"),
-    ("Pani Puri 🥙", "Dahi Bhalla 🍲"),
-    ("Police 👮", "Detective 🕵️"),
-    ("Ganga River 🌊", "Yamuna River 🌊"),
+    ("Chai", "Coffee"),
+    ("Virat Kohli", "Rohit Sharma"),
+    ("Taj Mahal", "Red Fort"),
+    ("Instagram", "Snapchat"),
+    ("Samosa", "Kachori"),
+    ("BGMI", "Free Fire"),
+    ("Goa", "Manali"),
+    ("Train", "Metro"),
+    ("Pizza", "Burger"),
+    ("Cinema", "Netflix"),
+    ("Cricket", "Badminton"),
+    ("Shaadi", "Birthday"),
+    ("Hospital", "School"),
+    ("Vrindavan", "Ayodhya"),
+    ("iPhone", "Samsung"),
+    ("Panipuri", "Dahi Bhalla"),
+    ("Police", "Detective"),
+    ("Ganga", "Yamuna"),
+    ("Arijit Singh", "Jubin Nautiyal"),
+    ("Shimla", "Mussoorie"),
 ]
 
 SPY_GAMES = {}
@@ -3903,10 +4571,10 @@ def spy_keyboard(gid, game):
         if len(game['players']) < 10:
             kb.add(types.InlineKeyboardButton('🕵️ Join Spy Game', callback_data=f'spy:{gid}:join'))
         if len(game['players']) >= 3:
-            kb.add(types.InlineKeyboardButton(f"🚀 Start Game ({len(game['players'])} Players)", callback_data=f'spy:{gid}:start'))
+            kb.add(types.InlineKeyboardButton(f"🚀 Start Game (Host Only • {len(game['players'])}P)", callback_data=f'spy:{gid}:start'))
     elif game['phase'] == 'clue':
         kb.add(types.InlineKeyboardButton('👁️ Apna Secret Word Dekhein', callback_data=f'spy:{gid}:word'))
-        kb.add(types.InlineKeyboardButton('🗳️ Start Voting (Spy Pakdein)', callback_data=f'spy:{gid}:govote'))
+        kb.add(types.InlineKeyboardButton('⏭️ Skip Turn (Host)', callback_data=f'spy:{gid}:skip'))
     elif game['phase'] == 'vote':
         kb.add(types.InlineKeyboardButton('👁️ Apna Secret Word Dekhein', callback_data=f'spy:{gid}:word'))
         for uid, pinfo in game['players'].items():
@@ -3915,35 +4583,111 @@ def spy_keyboard(gid, game):
     return kb
 
 def spy_text(game):
-    plist = "\n".join(
-        f"  • <a href=\"tg://user?id={uid}\">{esc(p['name'])}</a>" + (" ✅ (Voted)" if (game['phase'] == 'vote' and uid in game['votes']) else "")
-        for uid, p in game['players'].items()
-    )
+    host_name = game['players'].get(game['host_id'], {}).get('name', 'Host')
+    order = game.get('turn_order') or list(game['players'].keys())
+
     if game['phase'] == 'lobby':
+        plist = "\n".join(
+            f"  • <a href=\"tg://user?id={uid}\">{esc(p['name'])}</a>" + (" 👑 (Host)" if uid == game['host_id'] else "")
+            for uid, p in game['players'].items()
+        )
         return (
             f"🕵️ <b>UNDERCOVER SPY GAME</b> 🕵️\n\n"
+            f"👑 <b>Host:</b> {esc(host_name)} <i>(Sirf Host hi Start kar sakta hai)</i>\n"
             f"👥 <b>Joined Players ({len(game['players'])}/10):</b>\n{plist}\n\n"
-            f"📜 <b>Rules:</b>\n"
-            f"• Sabhi Citizens ko ek <b>Secret Word</b> milega aur 1 player ko <b>Spy (Alag Word)</b> milega.\n"
-            f"• Group mein 1-1 hint dein aur voting karke Spy ko pakdein!\n\n"
-            f"👇 <i>Kam se kam 3 players join karein aur Start dabayein:</i>"
+            f"📜 <b>Kaise Khelenge:</b>\n"
+            f"1. Sabhi Citizens ko ek <b>Secret Word</b> milega aur 1 <b>Spy</b> ko alag word milega.\n"
+            f"2. Sabhi players <b>baari-baari group chat mein 1 hint/clue likhenge</b>.\n"
+            f"3. Saare clues board par aane ke baad voting se asli Spy pakda jayega!\n\n"
+            f"👇 <i>Kam se kam 3 players join karein:</i>"
         )
     elif game['phase'] == 'clue':
+        cur_uid = order[game['clue_idx']]
+        cur_name = game['players'][cur_uid]['name']
+        clue_lines = []
+        for idx, uid in enumerate(order):
+            pname = game['players'][uid]['name']
+            if uid in game['clues']:
+                clue_lines.append(f"  ✅ <b>{esc(pname)}:</b> “{esc(game['clues'][uid])}”")
+            elif idx == game['clue_idx']:
+                clue_lines.append(f"  👉 <b>{esc(pname)}:</b> <i>(Chat mein clue likh rahe hain...)</i>")
+            else:
+                clue_lines.append(f"  ⏳ {esc(pname)}: <i>Waiting...</i>")
+        board_txt = "\n".join(clue_lines)
         return (
-            f"🕵️ <b>SPY GAME CHALU HO GAYA HAI!</b>\n\n"
-            f"👥 <b>Players:</b>\n{plist}\n\n"
-            f"1️⃣ Sabse pehle niche <b>'👁️ Apna Secret Word Dekhein'</b> button dabakar apna word dekhein (sirf aapko dikhega!).\n"
-            f"2️⃣ Chat mein apne word ke baare mein 1 chhota hint likhein (seedha word mat likhna!).\n"
-            f"3️⃣ Sabke hints ke baad <b>'🗳️ Start Voting'</b> dabayein!"
+            f"🕵️ <b>SPY GAME — CLUE ROUND ({len(game['clues'])}/{len(order)})</b>\n\n"
+            f"📋 <b>Live Clue Board:</b>\n{board_txt}\n\n"
+            f"1️⃣ Pehle niche <b>'👁️ Apna Secret Word Dekhein'</b> dabakar apna word dekhein.\n"
+            f"2️⃣ 👉 <b>Ab <a href=\"tg://user?id={cur_uid}\">{esc(cur_name)}</a> ki baari hai!</b> Group chat mein apne word ka <b>1-line hint</b> likh kar bhejein <i>(seedha word mat likhna!)</i>"
         )
     elif game['phase'] == 'vote':
+        clue_lines = [
+            f"  • <b>{esc(game['players'][uid]['name'])}:</b> “{esc(game['clues'].get(uid, 'No clue'))}”"
+            + (" ✅ (Voted)" if uid in game['votes'] else "")
+            for uid in order
+        ]
         return (
-            f"🗳️ <b>VOTING TIME — SPY KAUN HAI?</b>\n\n"
-            f"👥 <b>Players ({len(game['votes'])}/{len(game['players'])} voted):</b>\n{plist}\n\n"
+            f"🗳️ <b>VOTING TIME — CLUES PADHKAR SPY PAKDEIN!</b>\n\n"
+            f"📋 <b>Sabhi Players Ke Clues:</b>\n" + "\n".join(clue_lines) + "\n\n"
+            f"📊 <b>Votes ({len(game['votes'])}/{len(order)}):</b>\n"
             f"👇 <i>Jis par shaq hai uske naam par vote karein:</i>"
         )
     else:
         return game['result_text']
+
+def check_spy_clue_message(m):
+    if not m.text or m.text.startswith('/'):
+        return False
+    chat = m.chat.id
+    uid = m.from_user.id
+    hint = m.text.strip()
+    if not hint:
+        return False
+
+    with SPY_LOCK:
+        target_gid = None
+        for gid, g in SPY_GAMES.items():
+            if g['chat_id'] == chat and g['phase'] == 'clue':
+                order = g['turn_order']
+                if order and order[g['clue_idx']] == uid:
+                    target_gid = gid
+                    break
+        if not target_gid:
+            return False
+
+        game = SPY_GAMES[target_gid]
+        # Prevent player from accidentally typing the exact secret word in chat!
+        low_hint = hint.lower()
+        if game['citizen_word'].lower() in low_hint or game['spy_word'].lower() in low_hint:
+            try:
+                bot.delete_message(chat, m.message_id)
+            except Exception:
+                pass
+            bot.send_message(chat, f"⚠️ <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a> seedha secret word mat likhein! Sirf <b>hint/clue</b> likhein.")
+            return True
+
+        game['clues'][uid] = hint[:70]
+        game['ts'] = time.time()
+        game['clue_idx'] += 1
+
+        if game['clue_idx'] >= len(game['turn_order']):
+            game['phase'] = 'vote'
+
+        msg_id = game.get('msg_id')
+        txt = spy_text(game)
+        kb = spy_keyboard(target_gid, game)
+
+    if msg_id:
+        try:
+            bot.edit_message_text(txt, chat, msg_id, reply_markup=kb)
+            return True
+        except Exception:
+            pass
+    sent = bot.send_message(chat, txt, reply_markup=kb)
+    with SPY_LOCK:
+        if target_gid in SPY_GAMES:
+            SPY_GAMES[target_gid]['msg_id'] = sent.message_id
+    return True
 
 @bot.message_handler(commands=['spy', 'undercover'])
 def spy_cmd(m):
@@ -3952,8 +4696,13 @@ def spy_cmd(m):
     gid = uuid.uuid4().hex[:8]
     game = {
         'chat_id': m.chat.id,
+        'host_id': m.from_user.id,
+        'msg_id': None,
         'phase': 'lobby',
         'players': {m.from_user.id: {'name': user_name(m.from_user)}},
+        'turn_order': [],
+        'clue_idx': 0,
+        'clues': {},
         'spy_id': None,
         'citizen_word': '',
         'spy_word': '',
@@ -3968,7 +4717,10 @@ def spy_cmd(m):
                 SPY_GAMES.pop(k, None)
         SPY_GAMES[gid] = game
 
-    bot.send_message(m.chat.id, spy_text(game), reply_markup=spy_keyboard(gid, game))
+    sent = bot.send_message(m.chat.id, spy_text(game), reply_markup=spy_keyboard(gid, game))
+    with SPY_LOCK:
+        if gid in SPY_GAMES:
+            SPY_GAMES[gid]['msg_id'] = sent.message_id
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('spy:'))
 def spy_callback(call):
@@ -3988,6 +4740,7 @@ def spy_callback(call):
             return bot.answer_callback_query(call.id, '🏁 Yeh game khatam ho chuka hai!')
 
         game['ts'] = time.time()
+        game['msg_id'] = call.message.message_id
 
         if action == 'join':
             if game['phase'] != 'lobby':
@@ -4007,18 +4760,43 @@ def spy_callback(call):
         if action == 'start':
             if game['phase'] != 'lobby':
                 return bot.answer_callback_query(call.id, 'Already started!')
-            if uid not in game['players']:
-                return bot.answer_callback_query(call.id, 'Sirf joined players hi start kar sakte hain!', show_alert=True)
+            # STRICT HOST-ONLY START LOCK
+            if uid != game['host_id']:
+                host_n = game['players'].get(game['host_id'], {}).get('name', 'Host')
+                return bot.answer_callback_query(call.id, f"⛔ Sirf Game Host ({host_n}) hi game start kar sakte hain!", show_alert=True)
             if len(game['players']) < 3:
                 return bot.answer_callback_query(call.id, 'Kam se kam 3 players chahiye!', show_alert=True)
+
             c_word, s_word = random.choice(SPY_WORD_PAIRS)
             if random.random() < 0.5:
                 c_word, s_word = s_word, c_word
             game['citizen_word'] = c_word
             game['spy_word'] = s_word
-            game['spy_id'] = random.choice(list(game['players'].keys()))
+            order = list(game['players'].keys())
+            random.shuffle(order)
+            game['turn_order'] = order
+            game['clue_idx'] = 0
+            game['clues'] = {}
+            game['spy_id'] = random.choice(order)
             game['phase'] = 'clue'
-            bot.answer_callback_query(call.id, '🕵️ Roles & Secret Words assigned!')
+            bot.answer_callback_query(call.id, '🕵️ Game Started! Sab apna word dekhein aur clue dein.')
+            try:
+                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
+            except Exception:
+                pass
+            return
+
+        if action == 'skip':
+            if game['phase'] != 'clue':
+                return bot.answer_callback_query(call.id, 'Abhi clue phase nahi hai!')
+            if uid != game['host_id']:
+                return bot.answer_callback_query(call.id, '⛔ Sirf Host hi inactive player ki turn skip kar sakte hain!', show_alert=True)
+            cur_u = game['turn_order'][game['clue_idx']]
+            game['clues'][cur_u] = '(Skipped)'
+            game['clue_idx'] += 1
+            if game['clue_idx'] >= len(game['turn_order']):
+                game['phase'] = 'vote'
+            bot.answer_callback_query(call.id, '⏭️ Turn skipped!')
             try:
                 bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
             except Exception:
@@ -4031,27 +4809,14 @@ def spy_callback(call):
             if uid == game['spy_id']:
                 return bot.answer_callback_query(
                     call.id,
-                    f"🕵️ AAP SPY (UNDERCOVER) HAIN!\nAapka Word: {game['spy_word']}\n(Sabko lage ki aap normal citizen hain!)",
+                    f"🕵️ AAP SPY (UNDERCOVER) HAIN!\nAapka Word: {game['spy_word']}\n(Sabke clues padh kar samajhdari se hint dein!)",
                     show_alert=True
                 )
             return bot.answer_callback_query(
                 call.id,
-                f"👤 AAP CITIZEN HAIN!\nSecret Word: {game['citizen_word']}\n(Spy ko dhundhein!)",
+                f"👤 AAP CITIZEN HAIN!\nSecret Word: {game['citizen_word']}\n(Aisa clue dein jo sirf Citizens samjhein!)",
                 show_alert=True
             )
-
-        if action == 'govote':
-            if game['phase'] != 'clue':
-                return bot.answer_callback_query(call.id, 'Voting already active!')
-            if uid not in game['players']:
-                return bot.answer_callback_query(call.id, '⛔ Sirf players hi voting shuru kar sakte hain!', show_alert=True)
-            game['phase'] = 'vote'
-            bot.answer_callback_query(call.id, '🗳️ Voting shuru ho gayi hai!')
-            try:
-                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
-            except Exception:
-                pass
-            return
 
         if action == 'vote' and len(parts) == 4:
             if game['phase'] != 'vote':
@@ -4063,7 +4828,6 @@ def spy_callback(call):
                 return bot.answer_callback_query(call.id, 'Khud ko vote nahi de sakte!', show_alert=True)
             game['votes'][uid] = target_uid
 
-            # Check if all players have voted
             if len(game['votes']) >= len(game['players']):
                 tally = defaultdict(int)
                 for voted_u in game['votes'].values():
@@ -4075,7 +4839,6 @@ def spy_callback(call):
                 game['phase'] = 'over'
 
                 if top_voted_uid == spy_uid:
-                    # Citizens win! Award +50 coins to each citizen
                     with DB_LOCK, connect() as c:
                         for p_u in game['players']:
                             if p_u != spy_uid:
@@ -4088,7 +4851,6 @@ def spy_callback(call):
                         f"🪙 Sabhi Citizens ko <b>+50 Coins</b> mile!"
                     )
                 else:
-                    # Spy escapes and wins +80 coins!
                     with DB_LOCK, connect() as c:
                         c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (spy_uid, ''))
                         c.execute('UPDATE wallet SET coins=coins+80 WHERE user_id=?', (spy_uid,))
@@ -4106,6 +4868,410 @@ def spy_callback(call):
             except Exception:
                 pass
 
+# ---------------- GROUP GAME 3: WORD CHAIN (/wordchain & /wc) ----------------
+WC_GAMES = {}
+WC_LOCK = threading.Lock()
+WC_STARTERS = ["APPLE", "TIGER", "INDIA", "MUSIC", "OCEAN", "PLANET", "ROCKET", "FRIEND", "DRAGON", "CASTLE"]
+
+def wc_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    if game['phase'] == 'lobby':
+        if len(game['players']) < 12:
+            kb.add(types.InlineKeyboardButton('🔤 Join Word Chain', callback_data=f'wc:{gid}:join'))
+        if len(game['players']) >= 2:
+            kb.add(types.InlineKeyboardButton(f"🚀 Start (Host • {len(game['players'])}P)", callback_data=f'wc:{gid}:start'))
+    elif game['phase'] == 'play':
+        kb.add(types.InlineKeyboardButton('⏱️ Time Out / Eliminate Turn (Host)', callback_data=f'wc:{gid}:timeout'))
+    return kb
+
+def wc_text(game):
+    if game['phase'] == 'lobby':
+        plist = "\n".join(
+            f"  • <a href=\"tg://user?id={uid}\">{esc(name)}</a>" + (" 👑" if uid == game['host_id'] else "")
+            for uid, name in game['players'].items()
+        )
+        return (
+            f"🔤 <b>WORD CHAIN ELIMINATION</b> 🔤\n\n"
+            f"👥 <b>Joined Players ({len(game['players'])}):</b>\n{plist}\n\n"
+            f"📜 <b>Rules:</b> Pichhle word ke <b>aakhri letter</b> se naya English word (min 3 letters, no repeat) chat mein likhein!\n"
+            f"👇 <i>2+ players join karein aur Host Start dabayein:</i>"
+        )
+    elif game['phase'] == 'play':
+        cur_uid = game['alive'][game['turn_idx']]
+        cur_name = game['players'][cur_uid]
+        req_char = game['current_word'][-1].upper()
+        alive_str = ", ".join(esc(game['players'][u]) for u in game['alive'])
+        return (
+            f"🔤 <b>WORD CHAIN LIVE!</b>\n\n"
+            f"📌 Current Word: <b>{esc(game['current_word'])}</b>\n"
+            f"🎯 Required Starting Letter: <b>[ {req_char} ]</b>\n"
+            f"🏃 Alive ({len(game['alive'])}): {alive_str}\n\n"
+            f"👉 <b>Ab <a href=\"tg://user?id={cur_uid}\">{esc(cur_name)}</a> ki baari hai!</b>\n"
+            f"Chat mein <b>{req_char}</b> se shuru hone wala word likhein:"
+        )
+    return game['result_text']
+
+def check_wordchain_message(m):
+    if not m.text or m.text.startswith('/'):
+        return False
+    chat = m.chat.id
+    uid = m.from_user.id
+    word = re.sub(r'[^A-Za-z]', '', m.text.strip()).upper()
+    if len(word) < 3:
+        return False
+
+    with WC_LOCK:
+        target_gid = None
+        for gid, g in WC_GAMES.items():
+            if g['chat_id'] == chat and g['phase'] == 'play':
+                if g['alive'] and g['alive'][g['turn_idx']] == uid:
+                    target_gid = gid
+                    break
+        if not target_gid:
+            return False
+
+        game = WC_GAMES[target_gid]
+        req_char = game['current_word'][-1].upper()
+        if not word.startswith(req_char):
+            bot.reply_to(m, f"❌ Word <b>{req_char}</b> se shuru hona chahiye!")
+            return True
+        if word in game['used']:
+            bot.reply_to(m, f"⚠️ <b>{word}</b> pehle hi use ho chuka hai! Koi aur word likhein.")
+            return True
+
+        game['used'].add(word)
+        game['current_word'] = word
+        game['turn_idx'] = (game['turn_idx'] + 1) % len(game['alive'])
+        game['ts'] = time.time()
+        msg_id = game.get('msg_id')
+        txt = wc_text(game)
+        kb = wc_keyboard(target_gid, game)
+
+    if msg_id:
+        try:
+            bot.edit_message_text(txt, chat, msg_id, reply_markup=kb)
+            return True
+        except Exception:
+            pass
+    sent = bot.send_message(chat, txt, reply_markup=kb)
+    with WC_LOCK:
+        if target_gid in WC_GAMES:
+            WC_GAMES[target_gid]['msg_id'] = sent.message_id
+    return True
+
+@bot.message_handler(commands=['wordchain', 'wc'])
+def wordchain_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /wordchain in a group!')
+    gid = uuid.uuid4().hex[:8]
+    game = {
+        'chat_id': m.chat.id,
+        'host_id': m.from_user.id,
+        'msg_id': None,
+        'phase': 'lobby',
+        'players': {m.from_user.id: user_name(m.from_user)},
+        'alive': [],
+        'turn_idx': 0,
+        'current_word': random.choice(WC_STARTERS),
+        'used': set(),
+        'result_text': '',
+        'ts': time.time()
+    }
+    with WC_LOCK:
+        WC_GAMES[gid] = game
+    sent = bot.send_message(m.chat.id, wc_text(game), reply_markup=wc_keyboard(gid, game))
+    with WC_LOCK:
+        WC_GAMES[gid]['msg_id'] = sent.message_id
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('wc:'))
+def wc_callback(call):
+    parts = call.data.split(':')
+    if len(parts) < 3:
+        return
+    gid, action = parts[1], parts[2]
+    uid = call.from_user.id
+    uname = user_name(call.from_user)
+
+    with WC_LOCK:
+        game = WC_GAMES.get(gid)
+        if not game:
+            return bot.answer_callback_query(call.id, '⚠️ Game expire ho chuka hai.', show_alert=True)
+        game['msg_id'] = call.message.message_id
+        if action == 'join':
+            if game['phase'] != 'lobby':
+                return bot.answer_callback_query(call.id, 'Game pehle hi shuru ho chuka hai!')
+            if uid in game['players']:
+                return bot.answer_callback_query(call.id, 'Aap pehle se join hain!')
+            game['players'][uid] = uname
+            bot.answer_callback_query(call.id, '✅ Joined Word Chain!')
+        elif action == 'start':
+            if uid != game['host_id']:
+                return bot.answer_callback_query(call.id, '⛔ Sirf Host hi game start kar sakte hain!', show_alert=True)
+            if len(game['players']) < 2:
+                return bot.answer_callback_query(call.id, 'Kam se kam 2 players chahiye!', show_alert=True)
+            game['alive'] = list(game['players'].keys())
+            random.shuffle(game['alive'])
+            game['used'].add(game['current_word'])
+            game['phase'] = 'play'
+            bot.answer_callback_query(call.id, '🔤 Word Chain Started!')
+        elif action == 'timeout':
+            if game['phase'] != 'play':
+                return
+            if uid != game['host_id']:
+                return bot.answer_callback_query(call.id, '⛔ Sirf Host hi eliminate kar sakte hain!', show_alert=True)
+            out_u = game['alive'].pop(game['turn_idx'])
+            if len(game['alive']) == 1:
+                win_u = game['alive'][0]
+                win_n = game['players'][win_u]
+                game['phase'] = 'over'
+                game['result_text'] = f"🏆 <b>WORD CHAIN CHAMPION:</b> <a href=\"tg://user?id={win_u}\">{esc(win_n)}</a> (+60 Coins) 🎉"
+                with DB_LOCK, connect() as c:
+                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (win_u, ''))
+                    c.execute('UPDATE wallet SET coins=coins+60 WHERE user_id=?', (win_u,))
+            else:
+                game['turn_idx'] = game['turn_idx'] % len(game['alive'])
+            bot.answer_callback_query(call.id, f"❌ {game['players'][out_u]} eliminated!")
+
+        try:
+            bot.edit_message_text(wc_text(game), call.message.chat.id, call.message.message_id, reply_markup=wc_keyboard(gid, game))
+        except Exception:
+            pass
+
+# ---------------- GROUP GAME 4: ROCK-PAPER-SCISSORS (/rps) ----------------
+RPS_GAMES = {}
+RPS_LOCK = threading.Lock()
+RPS_ICONS = {'r': '🪨 Stone', 'p': '📄 Paper', 's': '✂️ Scissors'}
+
+def rps_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    if game['over']:
+        return kb
+    if game['p2_id'] is None:
+        kb.add(types.InlineKeyboardButton('🎮 Join RPS Duel', callback_data=f'rps:{gid}:join'))
+        return kb
+    kb.row(
+        types.InlineKeyboardButton('🪨 Stone', callback_data=f'rps:{gid}:pick:r'),
+        types.InlineKeyboardButton('📄 Paper', callback_data=f'rps:{gid}:pick:p'),
+        types.InlineKeyboardButton('✂️ Scissors', callback_data=f'rps:{gid}:pick:s'),
+    )
+    return kb
+
+def rps_text(game):
+    p1 = f"<a href=\"tg://user?id={game['p1_id']}\">{esc(game['p1_name'])}</a>"
+    p2 = f"<a href=\"tg://user?id={game['p2_id']}\">{esc(game['p2_name'])}</a>" if game['p2_id'] else "<i>Waiting for Player 2...</i>"
+    if game['p2_id'] is None:
+        return f"🪨📄✂️ <b>ROCK-PAPER-SCISSORS DUEL</b>\n\n👤 Player 1: {p1}\n👤 Player 2: {p2}\n\n👇 <i>Join karne ke liye button dabayein:</i>"
+    if not game['over']:
+        s1 = "✅ Ready" if game['c1'] else "⏳ Choosing..."
+        s2 = "✅ Ready" if game['c2'] else "⏳ Choosing..."
+        return f"🪨📄✂️ <b>ROCK-PAPER-SCISSORS</b>\n\n👤 {p1}: {s1}\n👤 {p2}: {s2}\n\n👇 <i>Dono players chupke se apna button dabayein:</i>"
+    return game['result_text']
+
+@bot.message_handler(commands=['rps'])
+def rps_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /rps in a group!')
+    gid = uuid.uuid4().hex[:8]
+    p2_id, p2_name = None, None
+    if m.reply_to_message and m.reply_to_message.from_user and not m.reply_to_message.from_user.is_bot:
+        if m.reply_to_message.from_user.id != m.from_user.id:
+            p2_id = m.reply_to_message.from_user.id
+            p2_name = user_name(m.reply_to_message.from_user)
+    game = {
+        'p1_id': m.from_user.id, 'p1_name': user_name(m.from_user),
+        'p2_id': p2_id, 'p2_name': p2_name,
+        'c1': None, 'c2': None, 'over': False, 'result_text': ''
+    }
+    with RPS_LOCK:
+        RPS_GAMES[gid] = game
+    bot.send_message(m.chat.id, rps_text(game), reply_markup=rps_keyboard(gid, game))
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('rps:'))
+def rps_callback(call):
+    parts = call.data.split(':')
+    gid, action = parts[1], parts[2]
+    uid = call.from_user.id
+    uname = user_name(call.from_user)
+
+    with RPS_LOCK:
+        game = RPS_GAMES.get(gid)
+        if not game or game['over']:
+            return bot.answer_callback_query(call.id, 'Game khatam ya expire ho gaya.')
+        if action == 'join':
+            if uid == game['p1_id'] or game['p2_id'] is not None:
+                return bot.answer_callback_query(call.id, 'Join nahi kar sakte!')
+            game['p2_id'] = uid
+            game['p2_name'] = uname
+            bot.answer_callback_query(call.id, '✅ Joined!')
+        elif action == 'pick' and len(parts) == 4:
+            if uid not in (game['p1_id'], game['p2_id']):
+                return bot.answer_callback_query(call.id, '⛔ Aap player nahi hain!', show_alert=True)
+            ch = parts[3]
+            if uid == game['p1_id']:
+                game['c1'] = ch
+            else:
+                game['c2'] = ch
+            bot.answer_callback_query(call.id, f"✅ {RPS_ICONS[ch]} locked!")
+
+            if game['c1'] and game['c2']:
+                game['over'] = True
+                c1, c2 = game['c1'], game['c2']
+                p1 = f"<a href=\"tg://user?id={game['p1_id']}\">{esc(game['p1_name'])}</a>"
+                p2 = f"<a href=\"tg://user?id={game['p2_id']}\">{esc(game['p2_name'])}</a>"
+                header = f"🪨📄✂️ <b>RPS RESULT</b>\n\n{p1}: {RPS_ICONS[c1]}\n{p2}: {RPS_ICONS[c2]}\n\n"
+                if c1 == c2:
+                    game['result_text'] = header + "🤝 <b>MATCH DRAW!</b>"
+                elif (c1 == 'r' and c2 == 's') or (c1 == 'p' and c2 == 'r') or (c1 == 's' and c2 == 'p'):
+                    game['result_text'] = header + f"🏆 <b>Winner:</b> {p1} (+30 Coins) 🎉"
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (game['p1_id'], ''))
+                        c.execute('UPDATE wallet SET coins=coins+30 WHERE user_id=?', (game['p1_id'],))
+                else:
+                    game['result_text'] = header + f"🏆 <b>Winner:</b> {p2} (+30 Coins) 🎉"
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (game['p2_id'], ''))
+                        c.execute('UPDATE wallet SET coins=coins+30 WHERE user_id=?', (game['p2_id'],))
+
+        try:
+            bot.edit_message_text(rps_text(game), call.message.chat.id, call.message.message_id, reply_markup=rps_keyboard(gid, game))
+        except Exception:
+            pass
+
+# ---------------- GROUP GAME 5: FAST TYPING RACE (/fasttype & /race) ----------------
+RACE_SENTENCES = [
+    "Mishra Robot sabse tez aur smart telegram bot hai",
+    "Radhe Krishna ki kripa se sabhi kaam safal hote hain",
+    "Practice makes a man perfect in every situation",
+    "Chandu ke chacha ne chandu ki chachi ko chatni chatayi",
+    "Success comes to those who work hard every single day",
+    "Vrindavan ki galiyon mein radha naam ki goonj hai"
+]
+ACTIVE_RACES = {}
+RACE_LOCK = threading.Lock()
+
+@bot.message_handler(commands=['fasttype', 'race'])
+def fasttype_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /fasttype in a group!')
+    target = random.choice(RACE_SENTENCES)
+    # Insert zero-width spaces so copy-paste doesn't match cleanly
+    anti_copy = "\u200b".join(list(target))
+    with RACE_LOCK:
+        ACTIVE_RACES[m.chat.id] = {'target': target.lower(), 'orig': target, 'ts': time.time()}
+    bot.send_message(
+        m.chat.id,
+        f"⚡ <b>FAST TYPING RACE!</b> ⚡\n\n"
+        f"Jo sabse pehle bina spelling mistake ke niche likha sentence type karega use <b>+40 Coins</b> milenge:\n\n"
+        f"📝 <code>{esc(anti_copy)}</code>"
+    )
+
+def check_fasttype_message(m):
+    if not m.text or m.text.startswith('/'):
+        return False
+    chat = m.chat.id
+    guess = m.text.replace('\u200b', '').strip().lower()
+    with RACE_LOCK:
+        race = ACTIVE_RACES.get(chat)
+        if not race or guess != race['target']:
+            return False
+        ACTIVE_RACES.pop(chat, None)
+        elapsed = round(time.time() - race['ts'], 2)
+
+    uid = m.from_user.id
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (uid, ''))
+        c.execute('UPDATE wallet SET coins=coins+40 WHERE user_id=?', (uid,))
+    bot.reply_to(
+        m,
+        f"🏆 <b>TYPING RACE WINNER!</b>\n"
+        f"⚡ Champion: <a href=\"tg://user?id={uid}\">{esc(user_name(m.from_user))}</a>\n"
+        f"⏱️ Time: <b>{elapsed} seconds</b>\n"
+        f"🪙 Reward: <b>+40 Coins</b>!"
+    )
+    return True
+
+# ---------------- GROUP GAME 6: SPIN-THE-BOTTLE TRUTH & DARE WHEEL (/tod) ----------------
+TOD_WHEELS = {}
+TOD_LOCK = threading.Lock()
+
+def tod_keyboard(gid, wheel):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    if wheel['chosen_uid'] is None:
+        kb.add(types.InlineKeyboardButton('🍾 Join Bottle Circle', callback_data=f'tod:{gid}:join'))
+        if len(wheel['players']) >= 2:
+            kb.add(types.InlineKeyboardButton(f"🔄 Spin Bottle ({len(wheel['players'])}P)", callback_data=f'tod:{gid}:spin'))
+    else:
+        kb.row(
+            types.InlineKeyboardButton('😇 Truth', callback_data=f'tod:{gid}:truth'),
+            types.InlineKeyboardButton('🔥 Dare', callback_data=f'tod:{gid}:dare')
+        )
+        kb.add(types.InlineKeyboardButton('🔄 Spin Again', callback_data=f'tod:{gid}:spin'))
+    return kb
+
+def tod_text(wheel):
+    plist = ", ".join(f"<a href=\"tg://user?id={u}\">{esc(n)}</a>" for u, n in wheel['players'].items())
+    if wheel['chosen_uid'] is None:
+        return (
+            f"🍾 <b>SPIN THE BOTTLE — TRUTH OR DARE WHEEL</b> 🍾\n\n"
+            f"👥 <b>Players ({len(wheel['players'])}):</b> {plist}\n\n"
+            f"👇 <i>Circle join karein aur Spin Bottle dabayein:</i>"
+        )
+    cu = wheel['chosen_uid']
+    cn = wheel['players'].get(cu, 'Player')
+    if not wheel['task']:
+        return (
+            f"🍾 <b>BOTTLE RUK GAYI HAI!</b> 🍾\n\n"
+            f"🎯 Target: <a href=\"tg://user?id={cu}\">{esc(cn)}</a>\n"
+            f"👇 <i>Niche <b>Truth</b> ya <b>Dare</b> chunein:</i>"
+        )
+    return (
+        f"🎲 <b>{wheel['kind']} FOR <a href=\"tg://user?id={cu}\">{esc(cn)}</a>:</b>\n\n"
+        f"👉 <b>{esc(wheel['task'])}</b>"
+    )
+
+@bot.message_handler(commands=['tod', 'spin'])
+def tod_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /tod in a group!')
+    gid = uuid.uuid4().hex[:8]
+    wheel = {'players': {m.from_user.id: user_name(m.from_user)}, 'chosen_uid': None, 'kind': '', 'task': ''}
+    with TOD_LOCK:
+        TOD_WHEELS[gid] = wheel
+    bot.send_message(m.chat.id, tod_text(wheel), reply_markup=tod_keyboard(gid, wheel))
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('tod:'))
+def tod_callback(call):
+    parts = call.data.split(':')
+    gid, action = parts[1], parts[2]
+    uid = call.from_user.id
+    uname = user_name(call.from_user)
+
+    with TOD_LOCK:
+        wheel = TOD_WHEELS.get(gid)
+        if not wheel:
+            return bot.answer_callback_query(call.id, '⚠️ Wheel expire ho gaya. /tod se naya banayein.')
+        if action == 'join':
+            wheel['players'][uid] = uname
+            bot.answer_callback_query(call.id, '🍾 Circle joined!')
+        elif action == 'spin':
+            if len(wheel['players']) < 2:
+                return bot.answer_callback_query(call.id, 'Kam se kam 2 players chahiye!', show_alert=True)
+            wheel['chosen_uid'] = random.choice(list(wheel['players'].keys()))
+            wheel['kind'] = ''
+            wheel['task'] = ''
+            bot.answer_callback_query(call.id, '🍾 Bottle spinned!')
+        elif action in ('truth', 'dare'):
+            if uid != wheel['chosen_uid']:
+                return bot.answer_callback_query(call.id, '⛔ Bottle aap par nahi ruki hai!', show_alert=True)
+            wheel['kind'] = '😇 TRUTH' if action == 'truth' else '🔥 DARE'
+            wheel['task'] = random.choice(TRUTHS if action == 'truth' else DARES)
+            bot.answer_callback_query(call.id, f"{wheel['kind']} selected!")
+
+        try:
+            bot.edit_message_text(tod_text(wheel), call.message.chat.id, call.message.message_id, reply_markup=tod_keyboard(gid, wheel))
+        except Exception:
+            pass
+
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])
 def monitor(m):
@@ -4119,8 +5285,14 @@ def monitor(m):
 
     body = (m.text or m.caption or '').strip()
 
-    # 2. Check active Cricketer Guess Game answer
+    # 2. Check active group mini-game answers (Quiz, Spy Clues, Word Chain, Typing Race)
     if check_cricket_answer(m):
+        return
+    if check_spy_clue_message(m):
+        return
+    if check_wordchain_message(m):
+        return
+    if check_fasttype_message(m):
         return
 
     # 3. Learn natural chat replies (text, stickers, GIFs) for chatbot

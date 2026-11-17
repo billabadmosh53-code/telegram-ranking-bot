@@ -2237,13 +2237,18 @@ def check_group_protections(m):
     is_adm = admin(chat, uid)
     is_app = is_lock_approved(chat, uid)
 
-    # 1. Night Mode Check (Admins & /approve users bypass)
-    if not (is_adm or is_app) and is_night_time_now(chat):
-        try:
-            bot.delete_message(chat, m.message_id)
-        except Exception:
-            pass
-        return True
+    # 1. Night Mode Check:
+    #    - Admins & Approved members can send anything (text, sticker, GIF, photo, video, etc.)
+    #    - Without approved member / non-admin: ONLY text messages are allowed! Stickers, GIFs, photos, videos, animations, audio, voice notes are deleted.
+    if is_night_time_now(chat) and not (is_adm or is_app):
+        ct = m.content_type
+        # If it's not a pure text message (or has media/sticker/animation/etc.), delete it!
+        if ct != 'text' or not m.text:
+            try:
+                bot.delete_message(chat, m.message_id)
+            except Exception:
+                pass
+            return True
 
     # 2. Anti-Channel / Sender Chat Check (Admins & /approve users bypass)
     if not (is_adm or is_app) and setting(chat, 'antichannel', 'off') == 'on' and getattr(m, 'sender_chat', None):
@@ -2266,7 +2271,7 @@ def check_group_protections(m):
     sticker_emoji = (m.sticker.emoji if (m.sticker and getattr(m.sticker, 'emoji', None)) else '')
     sticker_set = (m.sticker.set_name if (m.sticker and getattr(m.sticker, 'set_name', None)) else '')
 
-    # 4. Anti-NSFW Check (Deletes even for Admins unless explicitly /approve'd!)
+    # 4. Anti-NSFW Check (Deletes for everyone including normal members and admins; ONLY explicitly /approve'd whitelist members bypass)
     if not is_app and setting(chat, 'antinsfw', 'off') == 'on':
         nsfw_hit = False
         if body and NSFW_PATTERNS.search(body):
@@ -2287,8 +2292,8 @@ def check_group_protections(m):
                 pass
             return True
 
-    # 5. Anti-Abuse / Bad Words Filter (Deletes even for Admins unless explicitly /approve'd!)
-    if not is_app and setting(chat, 'antiabuse', 'off') == 'on' and body:
+    # 5. Anti-Abuse / Bad Words Filter (Admins are FREE / exempt; deletes for normal members unless /approve'd)
+    if not is_adm and not is_app and setting(chat, 'antiabuse', 'off') == 'on' and body:
         if ABUSE_PATTERNS.search(body):
             try:
                 bot.delete_message(chat, m.message_id)

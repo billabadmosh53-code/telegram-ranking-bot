@@ -1686,6 +1686,9 @@ def moderation(m):
         if cmd in ('promote', 'demote'):
             if not can_promote(chat, m.from_user.id):
                 return bot.reply_to(m, '⛔ Aapke paas naye admin add/remove karne ka right (Add Admins permission) nahi hai.')
+        if cmd in ('ban', 'kick', 'mute', 'warn'):
+            if admin(chat, uid):
+                return bot.reply_to(m, f'⛔ User <code>{uid}</code> ek group admin hain! Admin ko {cmd} nahi kiya ja sakta (pehle /demote karein).')
         if cmd == 'promote':
             kb = types.InlineKeyboardMarkup(row_width=1)
             kb.add(

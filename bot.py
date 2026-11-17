@@ -222,98 +222,131 @@ LUDO3D_HTML = r'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Mishra 3D Ludo King</title>
+<title>Mishra 3D Ludo King Royal</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; padding: 0;
-    background: radial-gradient(circle at top, #1f2b4d 0%, #0f1629 100%);
+    background: radial-gradient(ellipse at top, #1b2845 0%, #090d16 100%);
     color: #fff; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden;
   }
   .header {
     width: 100%; max-width: 440px; padding: 10px 14px;
     display: flex; justify-content: space-between; align-items: center;
-    background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05); backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255,215,0,0.18);
   }
-  .title { font-weight: 800; font-size: 16px; letter-spacing: 0.5px; color: #ffd54f; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
-  .room-badge { font-size: 11px; background: #2b3a67; padding: 4px 8px; border-radius: 12px; color: #90caf9; font-weight: 600; }
+  .title { font-weight: 900; font-size: 16px; letter-spacing: 0.6px; color: #ffd54f; text-shadow: 0 2px 8px rgba(255,213,79,0.4); }
+  .header-right { display: flex; align-items: center; gap: 6px; }
+  .room-badge { font-size: 11px; background: rgba(43,58,103,0.9); padding: 4px 9px; border-radius: 12px; color: #90caf9; font-weight: 700; border: 1px solid rgba(144,202,249,0.25); }
+  .sound-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; border-radius: 50%; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
   .players-bar {
     width: 100%; max-width: 440px; display: grid; grid-template-columns: repeat(2, 1fr);
-    gap: 6px; padding: 8px 12px;
+    gap: 7px; padding: 8px 12px;
   }
   .p-card {
-    background: rgba(255,255,255,0.07); border-radius: 12px; padding: 6px 10px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    border-radius: 14px; padding: 7px 11px;
     display: flex; align-items: center; justify-content: space-between;
-    border: 2px solid transparent; transition: all 0.25s ease;
+    border: 2px solid rgba(255,255,255,0.06); transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .p-card.active {
-    border-color: #ffd54f; background: rgba(255, 213, 79, 0.16);
-    box-shadow: 0 0 14px rgba(255, 213, 79, 0.35); transform: scale(1.02);
+    border-color: #ffd54f; background: linear-gradient(145deg, rgba(255,213,79,0.22), rgba(255,160,0,0.08));
+    box-shadow: 0 0 18px rgba(255, 213, 79, 0.4); transform: translateY(-1px) scale(1.02);
   }
-  .p-info { display: flex; align-items: center; gap: 7px; overflow: hidden; }
-  .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; box-shadow: inset -2px -2px 4px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.4); }
+  .p-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .pawn-badge {
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    box-shadow: inset -3px -3px 5px rgba(0,0,0,0.45), inset 2px 2px 4px rgba(255,255,255,0.7), 0 2px 5px rgba(0,0,0,0.5);
+  }
   .p-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 105px; }
-  .p-score { font-size: 11px; color: #cfd8dc; font-weight: 600; }
+  .p-score { font-size: 11px; color: #ffe082; font-weight: 700; }
 
+  .board-stage {
+    width: 94vw; max-width: 416px; aspect-ratio: 1 / 1;
+    margin: 4px auto; perspective: 1000px;
+  }
   .board-wrap {
-    position: relative; width: 94vw; max-width: 410px; aspect-ratio: 1 / 1;
-    margin: 4px auto; padding: 8px; border-radius: 20px;
-    background: linear-gradient(145deg, #6d3b18, #3e1f0a);
-    box-shadow: 0 16px 35px rgba(0,0,0,0.65), inset 0 2px 4px rgba(255,255,255,0.2);
-    transform: perspective(900px) rotateX(8deg);
-    transition: transform 0.4s ease;
+    width: 100%; height: 100%; padding: 10px; border-radius: 24px;
+    background: linear-gradient(145deg, #8d4e24, #4a230b);
+    box-shadow: 0 22px 45px rgba(0,0,0,0.75), 0 4px 0 #2d1405, inset 0 2px 5px rgba(255,220,160,0.35);
+    transform: rotateX(7deg);
+    transition: transform 0.35s ease;
   }
   canvas {
-    width: 100%; height: 100%; display: block; border-radius: 12px;
-    background: #fff; box-shadow: inset 0 0 8px rgba(0,0,0,0.35);
+    width: 100%; height: 100%; display: block; border-radius: 14px;
+    background: #fff; box-shadow: inset 0 0 10px rgba(0,0,0,0.35);
   }
 
   .controls {
-    width: 100%; max-width: 440px; padding: 10px 14px;
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    width: 100%; max-width: 440px; padding: 10px 14px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
   }
   .status-msg {
-    font-size: 13px; font-weight: 600; color: #e0f7fa; text-align: center;
-    background: rgba(0,0,0,0.35); padding: 6px 14px; border-radius: 20px; width: 100%;
+    font-size: 13px; font-weight: 700; color: #fff8e1; text-align: center;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+    padding: 8px 14px; border-radius: 20px; width: 100%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   }
-  .dice-row { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; }
-  .dice-3d {
-    width: 62px; height: 62px; border-radius: 14px;
-    background: linear-gradient(145deg, #ffffff, #dcdde1);
-    color: #1e272e; font-size: 32px; font-weight: 900;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.5), inset 0 -4px 6px rgba(0,0,0,0.2), inset 0 3px 5px #fff;
-    cursor: pointer; transition: transform 0.2s;
+  .dice-row { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; }
+
+  /* Real 3D Cube Dice */
+  .cube-scene { width: 64px; height: 64px; perspective: 400px; cursor: pointer; }
+  .cube {
+    width: 100%; height: 100%; position: relative; transform-style: preserve-3d;
+    transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.15);
   }
-  .dice-3d.rolling { animation: spin3d 0.45s infinite linear; }
-  @keyframes spin3d {
-    0% { transform: rotateX(0deg) rotateY(0deg) scale(1.08); }
-    50% { transform: rotateX(180deg) rotateY(180deg) scale(1.15); }
-    100% { transform: rotateX(360deg) rotateY(360deg) scale(1.08); }
+  .cube.rolling { animation: tumble3d 0.48s infinite linear; }
+  @keyframes tumble3d {
+    0%   { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1.1); }
+    50%  { transform: rotateX(220deg) rotateY(160deg) rotateZ(90deg) scale(1.18); }
+    100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg) scale(1.1); }
   }
+  .face {
+    position: absolute; width: 64px; height: 64px; border-radius: 14px;
+    background: radial-gradient(circle at 30% 30%, #ffffff, #e2e6ec);
+    border: 2px solid #cfd8dc;
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.15);
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    padding: 8px; gap: 3px;
+  }
+  .pip { width: 11px; height: 11px; border-radius: 50%; background: #1e272e; align-self: center; justify-self: center; box-shadow: inset 0 1px 2px rgba(0,0,0,0.6); }
+  .pip.red { background: #d63031; width: 13px; height: 13px; }
+  .f1 { transform: rotateY(0deg) translateZ(32px); }
+  .f6 { transform: rotateY(180deg) translateZ(32px); }
+  .f2 { transform: rotateY(90deg) translateZ(32px); }
+  .f5 { transform: rotateY(-90deg) translateZ(32px); }
+  .f3 { transform: rotateX(90deg) translateZ(32px); }
+  .f4 { transform: rotateX(-90deg) translateZ(32px); }
+
   .btn {
-    border: none; border-radius: 14px; padding: 12px 20px; font-size: 14px; font-weight: 800;
-    cursor: pointer; color: #fff; box-shadow: 0 6px 14px rgba(0,0,0,0.35); transition: transform 0.15s;
+    border: none; border-radius: 16px; padding: 13px 22px; font-size: 14px; font-weight: 800;
+    cursor: pointer; color: #fff; box-shadow: 0 7px 16px rgba(0,0,0,0.4); transition: transform 0.15s, box-shadow 0.15s;
   }
   .btn:active { transform: scale(0.95); }
   .btn-join { background: linear-gradient(135deg, #00b894, #00cec9); }
-  .btn-start { background: linear-gradient(135deg, #fdcb6e, #e17055); color: #1e272e; }
-  .btn-roll { background: linear-gradient(135deg, #6c5ce7, #a29bfe); flex: 1; max-width: 220px; }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-start { background: linear-gradient(135deg, #ffeaa7, #fdcb6e, #e17055); color: #1e272e; }
+  .btn-roll { background: linear-gradient(135deg, #6c5ce7, #8e44ad); flex: 1; max-width: 220px; letter-spacing: 0.4px; }
 </style>
 </head>
 <body>
   <div class="header">
     <div class="title">👑 MISHRA 3D LUDO KING</div>
-    <div class="room-badge" id="roomLabel">Room: ...</div>
+    <div class="header-right">
+      <div class="room-badge" id="roomLabel">Room: ...</div>
+      <button class="sound-btn" id="soundBtn" onclick="toggleSound()">🔊</button>
+    </div>
   </div>
 
   <div class="players-bar" id="playersBar"></div>
 
-  <div class="board-wrap">
-    <canvas id="ludoCanvas" width="600" height="600"></canvas>
+  <div class="board-stage">
+    <div class="board-wrap">
+      <canvas id="ludoCanvas" width="660" height="660"></canvas>
+    </div>
   </div>
 
   <div class="controls">
@@ -331,14 +364,33 @@ document.getElementById('roomLabel').innerText = 'Room #' + roomId;
 
 const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || {
   id: Math.floor(Math.random() * 900000) + 100000,
-  first_name: 'Guest_' + Math.floor(Math.random() * 99)
+  first_name: 'Player_' + Math.floor(Math.random() * 99)
 };
 
+let soundOn = true;
+function toggleSound() {
+  soundOn = !soundOn;
+  document.getElementById('soundBtn').innerText = soundOn ? '🔊' : '🔇';
+}
+function playTone(freq, dur, type='sine') {
+  if (!soundOn) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + dur);
+  } catch (e) {}
+}
+
 const COLORS = [
-  { key: 'R', name: 'Red', hex: '#e53935', dark: '#8e0000', light: '#ffcdd2', start: 0 },
-  { key: 'G', name: 'Green', hex: '#43a047', dark: '#00701a', light: '#c8e6c9', start: 13 },
-  { key: 'Y', name: 'Yellow', hex: '#fbc02d', dark: '#c49000', light: '#fff9c4', start: 26 },
-  { key: 'B', name: 'Blue', hex: '#1e88e5', dark: '#005cb2', light: '#bbdefb', start: 39 }
+  { key: 'R', name: 'Red', hex: '#e53935', mid: '#ff5252', dark: '#7f0000', light: '#ffcdd2', start: 0 },
+  { key: 'G', name: 'Green', hex: '#2e7d32', mid: '#66bb6a', dark: '#005005', light: '#c8e6c9', start: 13 },
+  { key: 'Y', name: 'Yellow', hex: '#f9a825', mid: '#ffee58', dark: '#bc5100', light: '#fff9c4', start: 26 },
+  { key: 'B', name: 'Blue', hex: '#1565c0', mid: '#42a5f5', dark: '#003c8f', light: '#bbdefb', start: 39 }
 ];
 
 const TRACK = [
@@ -356,21 +408,48 @@ const HOME_PATHS = {
 };
 
 const YARDS = {
-  R: [[1.5,1.5],[1.5,4.5],[4.5,1.5],[4.5,4.5]],
-  G: [[1.5,10.5],[1.5,13.5],[4.5,10.5],[4.5,13.5]],
-  Y: [[10.5,10.5],[10.5,13.5],[13.5,10.5],[13.5,13.5]],
-  B: [[10.5,1.5],[10.5,4.5],[13.5,1.5],[13.5,4.5]]
+  R: [[1.6,1.6],[1.6,4.4],[4.4,1.6],[4.4,4.4]],
+  G: [[1.6,10.6],[1.6,13.4],[4.4,10.6],[4.4,13.4]],
+  Y: [[10.6,10.6],[10.6,13.4],[13.4,10.6],[13.4,13.4]],
+  B: [[10.6,1.6],[10.6,4.4],[13.4,1.6],[13.4,4.4]]
 };
 
 const SAFES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
-const DICE_ICONS = ['🎲','⚀','⚁','⚂','⚃','⚄','⚅'];
+const CUBE_ROT = {
+  1: 'rotateX(0deg) rotateY(0deg)',
+  6: 'rotateX(0deg) rotateY(180deg)',
+  2: 'rotateX(0deg) rotateY(-90deg)',
+  5: 'rotateX(0deg) rotateY(90deg)',
+  3: 'rotateX(-90deg) rotateY(0deg)',
+  4: 'rotateX(90deg) rotateY(0deg)'
+};
 
 let state = null;
+let prevTokensMap = {};
+let animPositions = {};
 let rollingAnim = false;
 let clickableTokens = [];
+let pulsePhase = 0;
 
 const canvas = document.getElementById('ludoCanvas');
 const ctx = canvas.getContext('2d');
+
+function getCoordsForPos(pIdx, tIdx, pos) {
+  const cell = 44;
+  const col = COLORS[pIdx];
+  if (pos === -1) {
+    const [yr, yc] = YARDS[col.key][tIdx];
+    return { x: yc * cell, y: yr * cell };
+  } else if (pos >= 0 && pos <= 50) {
+    const gIdx = (col.start + pos) % 52;
+    const [tr, tc] = TRACK[gIdx];
+    return { x: tc * cell + cell / 2, y: tr * cell + cell / 2 };
+  } else if (pos >= 51 && pos <= 55) {
+    const [hr, hc] = HOME_PATHS[col.key][pos - 51];
+    return { x: hc * cell + cell / 2, y: hr * cell + cell / 2 };
+  }
+  return { x: 330 + (pIdx - 1.5) * 16, y: 330 };
+}
 
 function drawStar(cx, cy, rOut, rIn, fill, stroke) {
   ctx.beginPath();
@@ -386,13 +465,51 @@ function drawStar(cx, cy, rOut, rIn, fill, stroke) {
   ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke();
 }
 
-function drawBoard() {
-  const cell = 40;
-  ctx.clearRect(0, 0, 600, 600);
+function draw3DPawn(x, y, rad, col, num, isMovable) {
+  const bounce = isMovable ? Math.sin(pulsePhase) * 3.5 : 0;
+  const py = y - bounce;
 
+  if (isMovable) {
+    const glowR = rad + 8 + Math.sin(pulsePhase) * 2.5;
+    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.35)'; ctx.fill();
+    ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+
+  // Ground shadow
+  ctx.beginPath(); ctx.ellipse(x + 2, y + rad * 0.65, rad * 0.95, rad * 0.45, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fill();
+
+  // 3D Pawn Base Ring
+  ctx.beginPath(); ctx.arc(x, py + 2, rad, 0, Math.PI * 2);
+  ctx.fillStyle = col.dark; ctx.fill();
+
+  // 3D Glossy Sphere Body
+  const grad = ctx.createRadialGradient(x - rad * 0.35, py - rad * 0.4, 2, x, py, rad);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.25, col.mid);
+  grad.addColorStop(0.75, col.hex);
+  grad.addColorStop(1, col.dark);
+
+  ctx.beginPath(); ctx.arc(x, py, rad * 0.92, 0, Math.PI * 2);
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Token Number
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(num), x, py + 1);
+}
+
+function drawBoard() {
+  const cell = 44;
+  ctx.clearRect(0, 0, 660, 660);
+
+  // Crisp marble-white grid
   for (let r = 0; r < 15; r++) {
     for (let c = 0; c < 15; c++) {
-      ctx.fillStyle = '#fafafa';
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#f5f7fa';
       ctx.fillRect(c * cell, r * cell, cell, cell);
       ctx.strokeStyle = '#cfd8dc';
       ctx.lineWidth = 1;
@@ -400,6 +517,7 @@ function drawBoard() {
     }
   }
 
+  // 4 Royal Corner Yards
   const houses = [
     { r: 0, c: 0, col: COLORS[0] },
     { r: 0, c: 9, col: COLORS[1] },
@@ -408,23 +526,27 @@ function drawBoard() {
   ];
   houses.forEach(h => {
     const x = h.c * cell, y = h.r * cell, w = 6 * cell;
-    ctx.fillStyle = h.col.hex;
+    const g = ctx.createLinearGradient(x, y, x + w, y + w);
+    g.addColorStop(0, h.col.mid); g.addColorStop(1, h.col.hex);
+    ctx.fillStyle = g;
     ctx.fillRect(x, y, w, w);
     ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, w);
 
+    // 3D Recessed White Court
     ctx.fillStyle = h.col.dark;
-    ctx.beginPath(); ctx.roundRect(x + 28, y + 30, w - 52, w - 52, 22); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + 30, y + 33, w - 56, w - 56, 24); ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.roundRect(x + 25, y + 25, w - 52, w - 52, 22); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + 28, y + 28, w - 56, w - 56, 24); ctx.fill();
 
     YARDS[h.col.key].forEach(([yr, yc]) => {
       const scx = yc * cell, scy = yr * cell;
-      ctx.beginPath(); ctx.arc(scx, scy, 18, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(scx, scy, 20, 0, Math.PI * 2);
       ctx.fillStyle = h.col.light; ctx.fill();
-      ctx.strokeStyle = h.col.hex; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = h.col.hex; ctx.lineWidth = 3.5; ctx.stroke();
     });
   });
 
+  // Home Stretches & Start Squares
   COLORS.forEach(col => {
     const [sr, sc] = TRACK[col.start];
     ctx.fillStyle = col.hex;
@@ -436,14 +558,16 @@ function drawBoard() {
     });
   });
 
+  // Safe Stars
   SAFES.forEach(idx => {
     const [sr, sc] = TRACK[idx];
     const cx = sc * cell + cell / 2, cy = sr * cell + cell / 2;
     const isStart = COLORS.some(c => c.start === idx);
-    drawStar(cx, cy, 13, 6, isStart ? '#ffffff' : '#cfd8dc', isStart ? '#37474f' : '#78909c');
+    drawStar(cx, cy, 14, 6.5, isStart ? '#ffffff' : '#cfd8dc', isStart ? '#37474f' : '#78909c');
   });
 
-  const cx0 = 6 * cell, cy0 = 6 * cell, cx1 = 9 * cell, cy1 = 9 * cell, mx = 300, my = 300;
+  // Center 3x3 Crown Home
+  const cx0 = 6 * cell, cy0 = 6 * cell, cx1 = 9 * cell, cy1 = 9 * cell, mx = 330, my = 330;
   const tris = [
     { pts: [[cx0,cy0],[cx0,cy1],[mx,my]], fill: COLORS[0].hex },
     { pts: [[cx0,cy0],[cx1,cy0],[mx,my]], fill: COLORS[1].hex },
@@ -456,73 +580,68 @@ function drawBoard() {
     ctx.closePath(); ctx.fillStyle = t.fill; ctx.fill();
     ctx.strokeStyle = '#263238'; ctx.lineWidth = 1.5; ctx.stroke();
   });
+  ctx.beginPath(); ctx.arc(mx, my, 18, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffd54f'; ctx.fill(); ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 2; ctx.stroke();
 
   if (!state) return;
 
   clickableTokens = [];
-  const groups = {};
-  state.players.forEach((p, pIdx) => {
-    const col = COLORS[pIdx];
-    p.tokens.forEach((pos, tIdx) => {
-      let px, py;
-      if (pos === -1) {
-        const [yr, yc] = YARDS[col.key][tIdx];
-        px = yc * cell; py = yr * cell;
-      } else if (pos >= 0 && pos <= 50) {
-        const gIdx = (col.start + pos) % 52;
-        const [tr, tc] = TRACK[gIdx];
-        px = tc * cell + cell / 2; py = tr * cell + cell / 2;
-      } else if (pos >= 51 && pos <= 55) {
-        const [hr, hc] = HOME_PATHS[col.key][pos - 51];
-        px = hc * cell + cell / 2; py = hr * cell + cell / 2;
-      } else {
-        px = 300 + (pIdx - 1.5) * 14; py = 300;
-      }
-      const key = Math.round(px) + ',' + Math.round(py);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push({ p, pIdx, col, tIdx, pos, px, py });
-    });
-  });
-
   const curPlayer = state.players[state.turn_idx];
   const isMyTurn = state.started && !state.over && curPlayer && String(curPlayer.uid) === String(user.id);
 
-  Object.values(groups).forEach(list => {
-    const offsets = list.length === 1 ? [[0,0]] : [[-8,-8],[8,-8],[-8,8],[8,8]];
-    list.forEach((item, idx) => {
-      const [ox, oy] = offsets[idx % 4];
-      const x = item.px + ox, y = item.py + oy;
-      const rad = list.length === 1 ? 15 : 11;
-
-      const canMove = isMyTurn && state.awaiting_move && item.p.uid === curPlayer.uid &&
-                      ((item.pos === -1 && state.dice === 6) || (item.pos >= 0 && item.pos < 56 && item.pos + state.dice <= 56));
-
-      if (canMove) {
-        clickableTokens.push({ x, y, rad: 22, tIdx: item.tIdx });
-        ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.45)'; ctx.fill();
-        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2.5; ctx.stroke();
+  // Smoothly interpolate token coordinates for silky 60fps movement
+  const renderList = [];
+  state.players.forEach((p, pIdx) => {
+    const col = COLORS[pIdx];
+    p.tokens.forEach((pos, tIdx) => {
+      const idKey = `${pIdx}_${tIdx}`;
+      const target = getCoordsForPos(pIdx, tIdx, pos);
+      if (!animPositions[idKey]) {
+        animPositions[idKey] = { x: target.x, y: target.y };
+      } else {
+        animPositions[idKey].x += (target.x - animPositions[idKey].x) * 0.25;
+        animPositions[idKey].y += (target.y - animPositions[idKey].y) * 0.25;
       }
 
-      ctx.beginPath(); ctx.arc(x + 2, y + 4, rad, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+      const canMove = isMyTurn && state.awaiting_move && p.uid === curPlayer.uid &&
+                      ((pos === -1 && state.dice === 6) || (pos >= 0 && pos < 56 && pos + state.dice <= 56));
 
-      const grad = ctx.createRadialGradient(x - rad * 0.35, y - rad * 0.35, 2, x, y, rad);
-      grad.addColorStop(0, '#ffffff');
-      grad.addColorStop(0.28, item.col.hex);
-      grad.addColorStop(1, item.col.dark);
-
-      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
-      ctx.fillStyle = grad; ctx.fill();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(item.tIdx + 1), x, y + 1);
+      renderList.push({
+        pIdx, tIdx, col, pos,
+        x: animPositions[idKey].x,
+        y: animPositions[idKey].y,
+        canMove
+      });
     });
   });
+
+  // Offset overlapping tokens slightly
+  for (let i = 0; i < renderList.length; i++) {
+    let sameCount = 0;
+    for (let j = 0; j < i; j++) {
+      if (Math.hypot(renderList[i].x - renderList[j].x, renderList[i].y - renderList[j].y) < 10) {
+        sameCount++;
+      }
+    }
+    const offs = [[0,0],[-8,-7],[8,-7],[-8,7],[8,7]];
+    const [ox, oy] = offs[sameCount % offs.length];
+    const item = renderList[i];
+    const fx = item.x + ox, fy = item.y + oy;
+    const rad = sameCount > 0 ? 12 : 16;
+
+    if (item.canMove) {
+      clickableTokens.push({ x: fx, y: fy, rad: 25, tIdx: item.tIdx });
+    }
+    draw3DPawn(fx, fy, rad, item.col, item.tIdx + 1, item.canMove);
+  }
 }
+
+function animLoop() {
+  pulsePhase += 0.12;
+  drawBoard();
+  requestAnimationFrame(animLoop);
+}
+requestAnimationFrame(animLoop);
 
 canvas.addEventListener('click', (e) => {
   if (!clickableTokens.length) return;
@@ -533,13 +652,27 @@ canvas.addEventListener('click', (e) => {
   const cy = (e.clientY - rect.top) * scaleY;
 
   for (const tok of clickableTokens) {
-    const dist = Math.hypot(cx - tok.x, cy - tok.y);
-    if (dist <= tok.rad) {
+    if (Math.hypot(cx - tok.x, cy - tok.y) <= tok.rad) {
+      playTone(580, 0.14, 'triangle');
       sendAction('mv', tok.tIdx);
       break;
     }
   }
 });
+
+function build3DCubeHTML(diceVal, isRolling) {
+  const rot = CUBE_ROT[diceVal || 1] || CUBE_ROT[1];
+  return `
+    <div class="cube ${isRolling ? 'rolling' : ''}" style="transform:${rot}">
+      <div class="face f1"><div></div><div></div><div></div><div></div><div class="pip red"></div><div></div><div></div><div></div><div></div></div>
+      <div class="face f2"><div class="pip"></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div class="pip"></div></div>
+      <div class="face f3"><div class="pip"></div><div></div><div></div><div></div><div class="pip"></div><div></div><div></div><div></div><div class="pip"></div></div>
+      <div class="face f4"><div class="pip"></div><div></div><div class="pip"></div><div></div><div></div><div></div><div class="pip"></div><div></div><div class="pip"></div></div>
+      <div class="face f5"><div class="pip"></div><div></div><div class="pip"></div><div></div><div class="pip"></div><div></div><div class="pip"></div><div></div><div class="pip"></div></div>
+      <div class="face f6"><div class="pip"></div><div></div><div class="pip"></div><div class="pip"></div><div></div><div class="pip"></div><div class="pip"></div><div></div><div class="pip"></div></div>
+    </div>
+  `;
+}
 
 function renderUI() {
   if (!state) return;
@@ -553,7 +686,7 @@ function renderUI() {
     card.className = 'p-card' + (isTurn ? ' active' : '');
     card.innerHTML = `
       <div class="p-info">
-        <div class="dot" style="background:${col.hex}"></div>
+        <div class="pawn-badge" style="background:radial-gradient(circle at 30% 30%, #fff, ${col.hex}, ${col.dark})"></div>
         <div class="p-name">${p.name}</div>
       </div>
       <div class="p-score">🏠 ${done}/4</div>
@@ -573,18 +706,18 @@ function renderUI() {
       const btnJ = document.createElement('button');
       btnJ.className = 'btn btn-join';
       btnJ.innerText = '➕ Join 3D Ludo';
-      btnJ.onclick = () => sendAction('join');
+      btnJ.onclick = () => { playTone(520, 0.12); sendAction('join'); };
       actionRow.appendChild(btnJ);
     }
     if (alreadyJoined && state.players.length >= 2) {
       const btnS = document.createElement('button');
       btnS.className = 'btn btn-start';
       btnS.innerText = `🚀 Start Match (${state.players.length}P)`;
-      btnS.onclick = () => sendAction('start');
+      btnS.onclick = () => { playTone(660, 0.18); sendAction('start'); };
       actionRow.appendChild(btnS);
     }
   } else if (state.over) {
-    statusEl.innerText = `🏆 WINNER: ${state.winner_name} (+100 Coins)!`;
+    statusEl.innerText = `🏆 CHAMPION: ${state.winner_name} (+100 Coins)!`;
     const btnR = document.createElement('button');
     btnR.className = 'btn btn-join';
     btnR.innerText = '🔄 Play New 3D Match';
@@ -595,37 +728,38 @@ function renderUI() {
     const isMine = String(cur.uid) === String(user.id);
     if (state.awaiting_move) {
       statusEl.innerText = isMine
-        ? `🎲 Dice ${state.dice} aaya! Chamakti hui goti par tap karein!`
+        ? `🎲 Dice ${state.dice} aaya! Chamakti hui 3D goti par tap karein!`
         : `${cur.name} ne 🎲 ${state.dice} roll kiya — goti chal rahe hain...`;
     } else {
       statusEl.innerText = isMine
-        ? `👉 Aapki baari hai! 3D Dice par tap karein!`
+        ? `👉 Aapki baari hai! 3D Cube Dice par tap karein!`
         : `⏳ ${cur.name} ki baari hai...`;
     }
 
-    const diceBox = document.createElement('div');
-    diceBox.className = 'dice-3d' + (rollingAnim ? ' rolling' : '');
-    diceBox.innerText = DICE_ICONS[state.dice || 0];
+    const cubeScene = document.createElement('div');
+    cubeScene.className = 'cube-scene';
+    cubeScene.innerHTML = build3DCubeHTML(state.dice || 1, rollingAnim);
     if (isMine && !state.awaiting_move) {
-      diceBox.onclick = () => {
+      cubeScene.onclick = () => {
+        playTone(420, 0.1, 'square');
         rollingAnim = true; renderUI();
-        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 420);
+        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 450);
       };
     }
-    actionRow.appendChild(diceBox);
+    actionRow.appendChild(cubeScene);
 
     if (isMine && !state.awaiting_move) {
       const btnRoll = document.createElement('button');
       btnRoll.className = 'btn btn-roll';
       btnRoll.innerText = '🎲 Roll 3D Dice';
       btnRoll.onclick = () => {
+        playTone(420, 0.1, 'square');
         rollingAnim = true; renderUI();
-        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 420);
+        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 450);
       };
       actionRow.appendChild(btnRoll);
     }
   }
-  drawBoard();
 }
 
 async function fetchState() {
@@ -658,9 +792,8 @@ async function sendAction(action, tokenIdx = -1) {
   } catch (e) {}
 }
 
-drawBoard();
 fetchState();
-setInterval(fetchState, 1500);
+setInterval(fetchState, 1200);
 </script>
 </body>
 </html>'''
@@ -895,11 +1028,13 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 <b>New Features & Games</b>
 /chatbot on|off — smart auto-reply (text, sticker & GIF) when called
 /whisper — secret whisper button (1. Specific User, 2. 1st Seen, 3. For All)
-/ludo — 🎲 3D Ludo King Mini App + Classic In-Chat Ludo (+100 coins)
+/ludo — 🎲 3D Ludo King Mini App (+100 coins)
+/handcricket /hc — 🏏 2-Player Hand Cricket group game (+50 coins)
+/spy — 🕵️ Undercover Spy Word Game for 3-10 players (+80 coins)
 /ttt /tictactoe — ❌⭕ multiplayer Tic-Tac-Toe game (+30 coins)
 /style TEXT — convert text into 10+ stylish fancy fonts
-/cricket [on|off] — hard cricket quiz & auto toggle
-/spiritual [on|off] — spiritual quiz (Radha Krishna, Ram Sita, Mahadev, Jagannath ji) & auto toggle
+/cricket [on|off] — unlimited AI hard cricket quiz & auto toggle
+/spiritual [on|off] — unlimited AI spiritual quiz & auto toggle
 
 <b>Fun GIF Roleplay Actions</b>
 /hug /kiss /love /bite /kill /slap /pat /cuddle /punch /tickle — reply, @username, mention or ID
@@ -2027,7 +2162,12 @@ ACTION_SPECS = {
         'waifu': 'hug',
         'nekos': 'hug',
         'otaku': 'hug',
-        'giphy_q': ['bollywood hug romantic', 'korean drama hug cute', 'anime warm hug'],
+        'actress_queries': [
+            'bollywood actress warm hug gif',
+            'shraddha kapoor alia bhatt hug gif',
+            'korean actress drama hug cute gif',
+            'kdrama romantic warm hug gif'
+        ],
         'templates': [
             "🤗 {sender} ne {target} ko ek pyara sa warm hug diya! ❤️",
             "🫂 {sender} ne {target} ko gale laga liya! ✨"
@@ -2037,7 +2177,12 @@ ACTION_SPECS = {
         'waifu': 'kiss',
         'nekos': 'kiss',
         'otaku': 'kiss',
-        'giphy_q': ['bollywood flying kiss', 'korean actress kiss heart', 'anime sweet kiss'],
+        'actress_queries': [
+            'bollywood actress flying kiss cute gif',
+            'deepika padukone alia bhatt flying kiss gif',
+            'korean actress cute kiss heart gif',
+            'iu bae suzy flying kiss gif'
+        ],
         'templates': [
             "💋 {sender} ne {target} ko pyar se kiss kiya! 💕",
             "😘 {sender} sent a sweet flying kiss to {target}! 💖"
@@ -2047,7 +2192,12 @@ ACTION_SPECS = {
         'waifu': 'blush',
         'nekos': 'blush',
         'otaku': 'love',
-        'giphy_q': ['bollywood actress love heart', 'korean actress finger heart', 'indian actress romantic smile'],
+        'actress_queries': [
+            'bollywood actress heart love blush gif',
+            'rashmika mandanna shraddha kapoor heart gif',
+            'korean actress finger heart love gif',
+            'kdrama actress cute love blush gif'
+        ],
         'templates': [
             "❤️ {sender} ko {target} se beinteha pyar ho gaya hai! 💘",
             "💞 {sender} is sending pure love & hearts to {target}! 🥰"
@@ -2057,7 +2207,11 @@ ACTION_SPECS = {
         'waifu': 'blush',
         'nekos': 'hug',
         'otaku': 'love',
-        'giphy_q': ['bollywood romantic couple', 'korean drama romantic couple'],
+        'actress_queries': [
+            'bollywood romantic couple rain dance gif',
+            'korean drama romantic couple cute gif',
+            'indian actress romantic eye contact gif'
+        ],
         'templates': [
             "🌹 {sender} aur {target} ka romantic moment chal raha hai! ✨❤️"
         ]
@@ -2066,7 +2220,11 @@ ACTION_SPECS = {
         'waifu': 'bite',
         'nekos': 'bite',
         'otaku': 'bite',
-        'giphy_q': ['anime cute bite', 'playful bite funny'],
+        'actress_queries': [
+            'korean actress cute playful bite lip gif',
+            'bollywood actress cute naughty expression gif',
+            'kdrama girl cute playful bite gif'
+        ],
         'templates': [
             "🧛 {sender} ne {target} ko pyar se kaat (bite) liya! 😜",
             "🦷 Ouch! {sender} bit {target}! 😂"
@@ -2076,7 +2234,11 @@ ACTION_SPECS = {
         'waifu': 'kill',
         'nekos': 'shoot',
         'otaku': 'kill',
-        'giphy_q': ['anime sword attack', 'funny dramatic knockout'],
+        'actress_queries': [
+            'bollywood actress angry glare gun action gif',
+            'korean actress badass action fight scene gif',
+            'indian actress dramatic killer look gif'
+        ],
         'templates': [
             "⚔️ {sender} ne {target} ka kaam tamam kar diya! 💀😂",
             "💥 {sender} defeated {target} in an epic battle! 🏆"
@@ -2086,7 +2248,11 @@ ACTION_SPECS = {
         'waifu': 'slap',
         'nekos': 'slap',
         'otaku': 'slap',
-        'giphy_q': ['bollywood funny slap', 'anime funny slap'],
+        'actress_queries': [
+            'bollywood actress funny slap drama gif',
+            'korean drama funny slap reaction gif',
+            'indian serial funny slap gif'
+        ],
         'templates': [
             "👋 {sender} ne {target} ko zor ka thappad lagaya! 😱😂"
         ]
@@ -2095,7 +2261,10 @@ ACTION_SPECS = {
         'waifu': 'pat',
         'nekos': 'pat',
         'otaku': 'pat',
-        'giphy_q': ['korean actress cute smile', 'anime head pat'],
+        'actress_queries': [
+            'korean actress cute head pat smile gif',
+            'bollywood actress cute smile blessing gif'
+        ],
         'templates': [
             "🥰 {sender} ne {target} ke sar par pyar se haath fera! ✨"
         ]
@@ -2104,7 +2273,10 @@ ACTION_SPECS = {
         'waifu': 'cuddle',
         'nekos': 'cuddle',
         'otaku': 'cuddle',
-        'giphy_q': ['korean drama cuddle', 'anime cozy cuddle'],
+        'actress_queries': [
+            'korean drama cute cuddle cozy gif',
+            'bollywood romantic hug cuddle gif'
+        ],
         'templates': [
             "🧸 {sender} is cuddling tightly with {target}! 💕"
         ]
@@ -2113,7 +2285,10 @@ ACTION_SPECS = {
         'waifu': 'bonk',
         'nekos': 'punch',
         'otaku': 'punch',
-        'giphy_q': ['anime funny punch', 'cartoon bonk punch'],
+        'actress_queries': [
+            'korean actress funny punch fight gif',
+            'bollywood action punch funny gif'
+        ],
         'templates': [
             "🥊 {sender} ne {target} ko ek solid punch mara! 💫"
         ]
@@ -2122,7 +2297,10 @@ ACTION_SPECS = {
         'waifu': 'tickle',
         'nekos': 'tickle',
         'otaku': 'tickle',
-        'giphy_q': ['cute girl laughing tickle', 'anime tickle laugh'],
+        'actress_queries': [
+            'bollywood actress laughing cute gif',
+            'korean actress cute laugh giggle gif'
+        ],
         'templates': [
             "🤣 {sender} ne {target} ko gudgudi (tickle) karke hasa-hasa kar lotpot kar diya! 😂"
         ]
@@ -2166,12 +2344,12 @@ def resolve_action_target(m):
 def download_gif_to_buffer(url):
     import urllib.request
     req = urllib.request.Request(url, headers={
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'image/gif,video/mp4,*/*'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'video/mp4,image/gif,image/webp,*/*'
     })
     with urllib.request.urlopen(req, timeout=12) as resp:
         data = resp.read(12 * 1024 * 1024)
-    if not data or len(data) < 2000:
+    if not data or len(data) < 2500:
         return None
     buf = io.BytesIO(data)
     low = url.lower()
@@ -2181,67 +2359,106 @@ def download_gif_to_buffer(url):
         buf.name = 'action.gif'
     return buf
 
-def fetch_action_gif_urls(action_key):
+def fetch_actress_gif_candidates(query):
     import urllib.request, urllib.parse
-    spec = ACTION_SPECS[action_key]
-    urls = []
+    found = []
+    q_enc = urllib.parse.quote(query)
 
-    # 1. Giphy Public Beta Key (dc6zaTOxFJmzC) for Indian/Korean actress & reaction GIFs
-    if action_key in ('love', 'kiss', 'hug', 'pat', 'cuddle', 'romance', 'slap'):
+    # Source A: Tenor v2 Search API (public client key) - rich Indian & Korean actress GIFs
+    try:
+        t2_url = f"https://tenor.googleapis.com/v2/search?q={q_enc}&key=AIzaSyD-public-demo-key&client_key=mishra_bot&limit=12&media_filter=mp4,tinygif"
+        req = urllib.request.Request(t2_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        for res in (data.get('results') or []):
+            mf = res.get('media_formats') or {}
+            u = (mf.get('mp4') or {}).get('url') or (mf.get('tinygif') or {}).get('url')
+            if u:
+                found.append(u)
+    except Exception:
+        pass
+
+    # Source B: Giphy Public Search Endpoint
+    if not found:
         try:
-            q_enc = urllib.parse.quote(random.choice(spec['giphy_q']))
             g_url = f"https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q={q_enc}&limit=15&rating=pg-13"
             req = urllib.request.Request(g_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-            items = data.get('data') or []
-            if items:
-                random.shuffle(items)
-                for it in items[:4]:
-                    imgs = it.get('images') or {}
-                    mp4_u = (imgs.get('downsized_small') or {}).get('mp4') or (imgs.get('original') or {}).get('mp4')
-                    gif_u = (imgs.get('downsized') or {}).get('url') or (imgs.get('fixed_height') or {}).get('url')
-                    if mp4_u:
-                        urls.append(mp4_u)
-                    elif gif_u:
-                        urls.append(gif_u)
-        except Exception as e:
-            log.warning("Giphy fetch skipped: %s", e)
+            for it in (data.get('data') or []):
+                imgs = it.get('images') or {}
+                u = (imgs.get('downsized_small') or {}).get('mp4') or (imgs.get('original') or {}).get('mp4') or (imgs.get('downsized') or {}).get('url')
+                if u:
+                    found.append(u)
+        except Exception:
+            pass
 
-    # 2. nekos.best API (very reliable anime reaction GIFs)
+    # Source C: Direct Tenor Web Page Scraper (zero API key required, always works for Bollywood/Korean actress GIFs!)
+    if not found:
+        try:
+            slug = urllib.parse.quote(query.replace(' ', '-'))
+            web_url = f"https://tenor.com/search/{slug}-gifs"
+            req = urllib.request.Request(web_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9'
+            })
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode('utf-8', errors='ignore')
+            # Extract media.tenor.com .mp4 or .gif URLs directly from page JSON/HTML
+            matches = re.findall(r'https://media\.tenor\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.(?:mp4|gif)', html)
+            if matches:
+                unique_m = list(dict.fromkeys(matches))
+                found.extend(unique_m[:12])
+        except Exception:
+            pass
+
+    random.shuffle(found)
+    return found
+
+def fetch_anime_gif_candidates(spec):
+    import urllib.request
+    anime_urls = []
     try:
         req = urllib.request.Request(f"https://nekos.best/api/v2/{spec['nekos']}?amount=3", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=7) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         for item in (data.get('results') or []):
             if item.get('url'):
-                urls.append(item['url'])
-    except Exception as e:
-        log.warning("nekos.best fetch skipped: %s", e)
+                anime_urls.append(item['url'])
+    except Exception:
+        pass
 
-    # 3. waifu.pics API
     try:
         req = urllib.request.Request(f"https://api.waifu.pics/sfw/{spec['waifu']}", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=7) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         if data.get('url'):
-            urls.append(data['url'])
-    except Exception as e:
-        log.warning("waifu.pics fetch skipped: %s", e)
+            anime_urls.append(data['url'])
+    except Exception:
+        pass
 
-    # 4. otakugifs.xyz API
     try:
         req = urllib.request.Request(f"https://api.otakugifs.xyz/gif?reaction={spec['otaku']}", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=7) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         if data.get('url'):
-            urls.append(data['url'])
-    except Exception as e:
-        log.warning("otakugifs fetch skipped: %s", e)
+            anime_urls.append(data['url'])
+    except Exception:
+        pass
 
-    # Shuffle order so actress & anime GIFs mix naturally, while keeping valid URLs
-    random.shuffle(urls)
-    return urls
+    random.shuffle(anime_urls)
+    return anime_urls
+
+def fetch_action_gif_urls(action_key):
+    spec = ACTION_SPECS[action_key]
+    query = random.choice(spec['actress_queries'])
+    actress_urls = fetch_actress_gif_candidates(query)
+    anime_urls = fetch_anime_gif_candidates(spec)
+
+    # 60% priority for Indian/Korean actress GIFs + 40% Anime GIFs across ALL action commands!
+    if random.random() < 0.60 and actress_urls:
+        return actress_urls + anime_urls
+    return anime_urls + actress_urls
 
 @bot.message_handler(commands=['hug', 'kiss', 'love', 'romance', 'bite', 'kill', 'slap', 'pat', 'cuddle', 'punch', 'tickle'])
 def roleplay_action_cmd(m):
@@ -2269,7 +2486,7 @@ def roleplay_action_cmd(m):
     reply_mid = m.reply_to_message.message_id if m.reply_to_message else m.message_id
 
     gif_urls = fetch_action_gif_urls(cmd)
-    for g_url in gif_urls[:4]:
+    for g_url in gif_urls[:5]:
         try:
             gif_buf = download_gif_to_buffer(g_url)
             if gif_buf:
@@ -3127,12 +3344,15 @@ def generate_ai_quiz_question(category_filter, asked_set):
             )
         else:
             sub_topic = random.choice([
-                "Radha Krishna leela & Barsana/Vrindavan",
-                "Shri Ram, Mata Sita & Ramayana",
-                "Bhagwan Mahadev, Mata Parvati & 12 Jyotirlingas",
-                "Jagannath Puri & Rath Yatra",
-                "Mahabharata & Bhagavad Gita",
-                "Hanuman Ji & Vishnu Avatars"
+                "Radha Krishna leela, Barsana, Gokul & Vrindavan",
+                "Shri Ram, Mata Sita, Lakshman & Ramayana",
+                "Bhagwan Mahadev, Mata Parvati, Kailash & 12 Jyotirlingas",
+                "Bhagwan Jagannath Puri, Balabhadra, Subhadra & Rath Yatra",
+                "Mahabharata heroes, Kurukshetra & Shrimad Bhagavad Gita",
+                "Bhakt Hanuman Ji, Sundarkand & Panchmukhi avatar",
+                "Bhagwan Vishnu ke Dashavatar (Narasimha, Vamana, Parashurama, Kalki)",
+                "Maa Durga, Navadurga, Shakti Peethas & Maa Lakshmi/Saraswati",
+                "Vedas, Upanishads, Puranas & Great Rishis (Valmiki, Vyas, Vishwamitra)"
             ])
             topic_prompt = (
                 f"Generate 1 unique, interesting Hindu spiritual trivia question specifically about {sub_topic} "
@@ -3195,8 +3415,8 @@ def post_cricket_question(chat_id, reply_to_id=None, category_filter=None):
         unasked_pool = [q for q in pool if q[1] not in asked]
 
     chosen = None
-    # Prioritize brand-new AI questions 80% of the time so every question feels completely fresh!
-    if random.random() < 0.80 or not unasked_pool:
+    # Always generate brand-new AI questions first (95% priority) so every single question is fresh!
+    if random.random() < 0.95 or not unasked_pool:
         ai_q = generate_ai_quiz_question(category_filter, asked)
         if ai_q:
             chosen = ai_q
@@ -3319,346 +3539,149 @@ def hourly_cricket_loop():
         except Exception:
             log.exception('2-hour quiz loop error')
 
-# ---------------- PREMIUM LUDO KING STYLE GAME (/ludo - CRYSTAL CLEAR BUTTONS & SINGLE PERMANENT BOARD) ----------------
-LUDO_GAMES = {}
-LUDO_LOCK = threading.Lock()
-
-LUDO_COLORS = [
-    {'key': 'R', 'name': 'Red', 'emoji': '🔴', 'rgb': (218, 41, 41), 'dark': (155, 20, 20), 'light': (255, 214, 214), 'start': 0},
-    {'key': 'G', 'name': 'Green', 'emoji': '🟢', 'rgb': (34, 168, 68), 'dark': (18, 115, 42), 'light': (206, 248, 216), 'start': 13},
-    {'key': 'Y', 'name': 'Yellow', 'emoji': '🟡', 'rgb': (236, 182, 16), 'dark': (175, 130, 5), 'light': (255, 246, 198), 'start': 26},
-    {'key': 'B', 'name': 'Blue', 'emoji': '🔵', 'rgb': (38, 110, 232), 'dark': (20, 70, 175), 'light': (206, 228, 255), 'start': 39},
-]
-
-LUDO_TRACK_COORDS = [
-    (6,1),(6,2),(6,3),(6,4),(6,5),
-    (5,6),(4,6),(3,6),(2,6),(1,6),(0,6),
-    (0,7),(0,8),
-    (1,8),(2,8),(3,8),(4,8),(5,8),
-    (6,9),(6,10),(6,11),(6,12),(6,13),(6,14),
-    (7,14),(8,14),
-    (8,13),(8,12),(8,11),(8,10),(8,9),
-    (9,8),(10,8),(11,8),(12,8),(13,8),(14,8),
-    (14,7),(14,6),
-    (13,6),(12,6),(11,6),(10,6),(9,6),
-    (8,5),(8,4),(8,3),(8,2),(8,1),(8,0),
-    (7,0),(6,0)
-]
-
-LUDO_HOME_COORDS = {
-    'R': [(7,1),(7,2),(7,3),(7,4),(7,5)],
-    'G': [(1,7),(2,7),(3,7),(4,7),(5,7)],
-    'Y': [(7,13),(7,12),(7,11),(7,10),(7,9)],
-    'B': [(13,7),(12,7),(11,7),(10,7),(9,7)],
-}
-
-LUDO_YARD_COORDS = {
-    'R': [(1,1),(1,4),(4,1),(4,4)],
-    'G': [(1,10),(1,13),(4,10),(4,13)],
-    'Y': [(10,10),(10,13),(13,10),(13,13)],
-    'B': [(10,1),(10,4),(13,1),(13,4)],
-}
-
+# ---------------- 3D LUDO KING MINI APP LAUNCHER (/ludo) ----------------
 LUDO_SAFE_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
-DICE_FACES = {1: '1️⃣', 2: '2️⃣', 3: '3️⃣', 4: '4️⃣', 5: '5️⃣', 6: '6️⃣'}
-
-def draw_star_shape(d, cx, cy, r_outer, r_inner, fill_col, outline_col):
-    import math
-    pts = []
-    for i in range(10):
-        ang = math.radians(-90 + i * 36)
-        rad = r_outer if i % 2 == 0 else r_inner
-        pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
-    d.polygon(pts, fill=fill_col, outline=outline_col)
-
-def render_ludo_board(game):
-    cell = 44
-    pad = 16
-    board_px = cell * 15
-    size = board_px + pad * 2
-    img = Image.new('RGB', (size, size), (92, 52, 24))
-    d = ImageDraw.Draw(img)
-
-    d.rounded_rectangle([4, 4, size - 4, size - 4], radius=22, fill=(125, 72, 34), outline=(58, 30, 12), width=4)
-    d.rectangle([pad - 3, pad - 3, pad + board_px + 3, pad + board_px + 3], fill=(45, 45, 50))
-
-    for r in range(15):
-        for c in range(15):
-            x0, y0 = pad + c * cell, pad + r * cell
-            d.rectangle([x0, y0, x0 + cell, y0 + cell], fill=(252, 252, 254), outline=(185, 190, 200), width=1)
-
-    yards = [
-        (0, 0, LUDO_COLORS[0]),
-        (0, 9, LUDO_COLORS[1]),
-        (9, 9, LUDO_COLORS[2]),
-        (9, 0, LUDO_COLORS[3]),
-    ]
-    for r0, c0, col in yards:
-        x0, y0 = pad + c0 * cell, pad + r0 * cell
-        x1, y1 = pad + (c0 + 6) * cell, pad + (r0 + 6) * cell
-        d.rectangle([x0, y0, x1, y1], fill=col['rgb'], outline=(35, 35, 40), width=2)
-        ix0, iy0, ix1, iy1 = x0 + 30, y0 + 30, x1 - 30, y1 - 30
-        d.rounded_rectangle([ix0 + 3, iy0 + 3, ix1 + 3, iy1 + 3], radius=22, fill=col['dark'])
-        d.rounded_rectangle([ix0, iy0, ix1, iy1], radius=22, fill=(255, 255, 255), outline=(45, 45, 50), width=2)
-        for yr, yc in LUDO_YARD_COORDS[col['key']]:
-            scx = pad + yc * cell + cell // 2
-            scy = pad + yr * cell + cell // 2
-            d.ellipse([scx - 16, scy - 16, scx + 16, scy + 16], fill=col['light'], outline=col['rgb'], width=3)
-
-    for col in LUDO_COLORS:
-        k = col['key']
-        sr, sc = LUDO_TRACK_COORDS[col['start']]
-        sx0, sy0 = pad + sc * cell, pad + sr * cell
-        d.rectangle([sx0, sy0, sx0 + cell, sy0 + cell], fill=col['rgb'], outline=(90, 90, 95), width=1)
-        for hr, hc in LUDO_HOME_COORDS[k]:
-            hx0, hy0 = pad + hc * cell, pad + hr * cell
-            d.rectangle([hx0, hy0, hx0 + cell, hy0 + cell], fill=col['rgb'], outline=(235, 235, 240), width=1)
-
-    for idx in LUDO_SAFE_INDICES:
-        sr, sc = LUDO_TRACK_COORDS[idx]
-        cx = pad + sc * cell + cell // 2
-        cy = pad + sr * cell + cell // 2
-        is_start = any(idx == c['start'] for c in LUDO_COLORS)
-        star_fill = (255, 255, 255) if is_start else (215, 220, 230)
-        star_out = (60, 60, 65) if is_start else (120, 125, 135)
-        draw_star_shape(d, cx, cy, 13, 6, star_fill, star_out)
-
-    cx0, cy0 = pad + 6 * cell, pad + 6 * cell
-    cx1, cy1 = pad + 9 * cell, pad + 9 * cell
-    midx, midy = pad + board_px // 2, pad + board_px // 2
-    d.polygon([(cx0, cy0), (cx0, cy1), (midx, midy)], fill=LUDO_COLORS[0]['rgb'], outline=(35, 35, 40))
-    d.polygon([(cx0, cy0), (cx1, cy0), (midx, midy)], fill=LUDO_COLORS[1]['rgb'], outline=(35, 35, 40))
-    d.polygon([(cx1, cy0), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[2]['rgb'], outline=(35, 35, 40))
-    d.polygon([(cx0, cy1), (cx1, cy1), (midx, midy)], fill=LUDO_COLORS[3]['rgb'], outline=(35, 35, 40))
-    d.ellipse([midx - 16, midy - 16, midx + 16, midy + 16], fill=(255, 235, 130), outline=(60, 45, 15), width=2)
-
-    cell_occupants = defaultdict(list)
-    for p in game['players']:
-        ckey = p['color']['key']
-        c_start = p['color']['start']
-        for tidx, pos in enumerate(p['tokens']):
-            if pos == -1:
-                yr, yc = LUDO_YARD_COORDS[ckey][tidx]
-                cell_occupants[(yr, yc)].append((p['color'], tidx + 1))
-            elif 0 <= pos <= 50:
-                g_idx = (c_start + pos) % 52
-                tr, tc = LUDO_TRACK_COORDS[g_idx]
-                cell_occupants[(tr, tc)].append((p['color'], tidx + 1))
-            elif 51 <= pos <= 55:
-                hr, hc = LUDO_HOME_COORDS[ckey][pos - 51]
-                cell_occupants[(hr, hc)].append((p['color'], tidx + 1))
-            else:
-                cell_occupants[(7, 7)].append((p['color'], tidx + 1))
-
-    try:
-        tfont = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 15)
-    except OSError:
-        tfont = ImageFont.load_default()
-
-    for (r, c), items in cell_occupants.items():
-        base_x = pad + c * cell + cell // 2
-        base_y = pad + r * cell + cell // 2
-        offsets = [(0, 0)] if len(items) == 1 else [(-9, -9), (9, -9), (-9, 9), (9, 9)]
-        for i, (col, num) in enumerate(items[:4]):
-            ox, oy = offsets[i]
-            rad = 15 if len(items) == 1 else 10
-            px, py = base_x + ox, base_y + oy
-            d.ellipse([px - rad + 2, py - rad + 3, px + rad + 2, py + rad + 3], fill=(40, 40, 45))
-            d.ellipse([px - rad, py - rad, px + rad, py + rad], fill=col['rgb'], outline=(255, 255, 255), width=2)
-            d.ellipse([px - rad - 1, py - rad - 1, px + rad + 1, py + rad + 1], outline=col['dark'], width=2)
-            d.ellipse([px - rad // 2, py - rad + 3, px, py - 2], fill=(255, 255, 255))
-            if len(items) == 1:
-                d.text((px - 4, py - 8), str(num), font=tfont, fill=(255, 255, 255))
-
-    out = io.BytesIO()
-    out.name = 'ludo_board.png'
-    img.save(out, 'PNG')
-    out.seek(0)
-    return out
-
-def ludo_valid_moves(player, dice_val):
-    moves = []
-    for i, pos in enumerate(player['tokens']):
-        if pos == -1 and dice_val == 6:
-            moves.append(i)
-        elif 0 <= pos < 56 and pos + dice_val <= 56:
-            moves.append(i)
-    return moves
-
-def ludo_board_caption(game):
-    lines = ["👑 <b>MISHRA LUDO KING</b> 👑"]
-    if not game['started']:
-        lines.append(f"👥 <b>Players Joined ({len(game['players'])}/4):</b>")
-        for p in game['players']:
-            lines.append(f"  {p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a> ({p['color']['name']})")
-        lines.append("\n📌 <i>2, 3, ya 4 players join kar sakte hain!</i>")
-        lines.append("👇 <i>Niche 'Join Game' dabayein aur 'Start Match' se khel shuru karein:</i>")
-        return "\n".join(lines)
-
-    lines.append("")
-    for idx, p in enumerate(game['players']):
-        done_cnt = sum(1 for t in p['tokens'] if t == 56)
-        yard_cnt = sum(1 for t in p['tokens'] if t == -1)
-        track_cnt = 4 - done_cnt - yard_cnt
-        turn_tag = "  ◀️ <b>[TURN]</b>" if (not game['over'] and idx == game['turn_idx']) else ""
-        lines.append(f"{p['color']['emoji']} <a href=\"tg://user?id={p['uid']}\">{esc(p['name'])}</a>: 🏠{done_cnt} | 🎯{track_cnt} | 🔒{yard_cnt}{turn_tag}")
-
-    if game['last_log']:
-        lines.append(f"\n📢 <b>Update:</b> {esc(game['last_log'])}")
-
-    if game['over']:
-        w = game['winner']
-        lines.append(f"\n🏆 <b>CHAMPION:</b> {w['color']['emoji']} <a href=\"tg://user?id={w['uid']}\">{esc(w['name'])}</a> (+100 Coins) 🎉")
-    else:
-        cur = game['players'][game['turn_idx']]
-        if game['awaiting_move']:
-            d_icon = DICE_FACES.get(game['dice'], str(game['dice']))
-            lines.append(f"\n🎲 <b>Dice Aaya: {d_icon} ({game['dice']})</b>")
-            lines.append(f"👇 {cur['color']['emoji']} <b>{esc(cur['name'])}</b>, apni goti ka button dabayein:")
-        else:
-            lines.append(f"\n👉 <b>Ab Baari Hai:</b> {cur['color']['emoji']} <b>{esc(cur['name'])}</b>")
-            lines.append("👇 <i>Niche '🎲 Roll Dice' button dabayein:</i>")
-    return "\n".join(lines)
-
-def ludo_keyboard(gid, game):
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    if game['over']:
-        kb.add(types.InlineKeyboardButton('🔄 Play New Ludo', callback_data=f'ludo:{gid}:rematch'))
-        return kb
-
-    if not game['started']:
-        if len(game['players']) < 4:
-            next_col = LUDO_COLORS[len(game['players'])]
-            kb.add(types.InlineKeyboardButton(f"➕ Join ({next_col['emoji']} {next_col['name']})", callback_data=f'ludo:{gid}:join'))
-        if len(game['players']) >= 2:
-            kb.add(types.InlineKeyboardButton(f"▶️ Start Match ({len(game['players'])} Players)", callback_data=f'ludo:{gid}:start'))
-        return kb
-
-    cur = game['players'][game['turn_idx']]
-    if not game['awaiting_move']:
-        kb.add(types.InlineKeyboardButton(f"🎲 Roll Dice ({cur['color']['emoji']} {cur['name'][:14]})", callback_data=f'ludo:{gid}:roll'))
-    else:
-        valid = ludo_valid_moves(cur, game['dice'])
-        btns = []
-        for tidx in valid:
-            pos = cur['tokens'][tidx]
-            if pos == -1:
-                label = f"{cur['color']['emoji']} Goti {tidx+1}: Bahar Nikalein"
-            elif pos + game['dice'] == 56:
-                label = f"{cur['color']['emoji']} Goti {tidx+1}: 🏠 Home Pahunchayein"
-            else:
-                label = f"{cur['color']['emoji']} Goti {tidx+1}: +{game['dice']} Step Chalein"
-            btns.append(types.InlineKeyboardButton(label, callback_data=f'ludo:{gid}:mv:{tidx}'))
-        for b in btns:
-            kb.add(b)
-    return kb
-
-def send_or_update_ludo(chat_id, gid, game, update_image=True):
-    # Keeps ONE single permanent photo message and updates only its media/caption in place
-    cap = ludo_board_caption(game)
-    kb = ludo_keyboard(gid, game)
-    msg_id = game.get('board_msg_id')
-
-    if msg_id:
-        if update_image:
-            try:
-                board_img = render_ludo_board(game)
-                bot.edit_message_media(
-                    media=types.InputMediaPhoto(board_img, caption=cap, parse_mode='HTML'),
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    reply_markup=kb
-                )
-                return
-            except Exception:
-                pass
-        try:
-            bot.edit_message_caption(caption=cap, chat_id=chat_id, message_id=msg_id, parse_mode='HTML', reply_markup=kb)
-            return
-        except Exception:
-            pass
-
-    board_img = render_ludo_board(game)
-    sent = bot.send_photo(chat_id, board_img, caption=cap, reply_markup=kb)
-    game['board_msg_id'] = sent.message_id
 
 def get_public_webapp_base():
-    base = (os.getenv('WEBAPP_URL', '') or os.getenv('RENDER_EXTERNAL_URL', '')).strip().rstrip('/')
-    return base
-
-def launch_classic_ludo_in_chat(chat_id, creator_uid, creator_name, replace_msg_id=None):
-    gid = uuid.uuid4().hex[:8]
-    game = {
-        'chat_id': chat_id,
-        'board_msg_id': replace_msg_id,
-        'players': [{
-            'uid': creator_uid,
-            'name': creator_name,
-            'color': LUDO_COLORS[0],
-            'tokens': [-1, -1, -1, -1]
-        }],
-        'started': False,
-        'over': False,
-        'winner': None,
-        'turn_idx': 0,
-        'dice': 0,
-        'awaiting_move': False,
-        'six_streak': 0,
-        'last_log': f"{creator_name} ne Ludo table banaya!",
-        'ts': time.time()
-    }
-    with LUDO_LOCK:
-        now = time.time()
-        for k in list(LUDO_GAMES.keys()):
-            if now - LUDO_GAMES[k]['ts'] > 3600:
-                LUDO_GAMES.pop(k, None)
-        LUDO_GAMES[gid] = game
-
-    if replace_msg_id:
-        safe_delete(chat_id, replace_msg_id)
-        game['board_msg_id'] = None
-    send_or_update_ludo(chat_id, gid, game, update_image=True)
+    return (os.getenv('WEBAPP_URL', '') or os.getenv('RENDER_EXTERNAL_URL', '')).strip().rstrip('/')
 
 @bot.message_handler(commands=['ludo'])
 def ludo_cmd(m):
-    if not group(m):
-        base = get_public_webapp_base()
-        if base:
-            room_id = f"dm_{m.from_user.id}"
-            kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton('🎮 Open 3D Ludo King App', web_app=types.WebAppInfo(url=f"{base}/ludo3d?room={room_id}")))
-            return bot.reply_to(m, "👑 <b>MISHRA 3D LUDO KING</b>\nNiche button dabakar 3D Ludo App kholein:", reply_markup=kb)
-        return bot.reply_to(m, 'Use /ludo in a group to play with friends!')
-
     base = get_public_webapp_base()
+    if not base:
+        return bot.reply_to(
+            m,
+            "⚠️ <b>3D Ludo Mini App URL set nahi hai!</b>\n"
+            "Render Environment mein <code>WEBAPP_URL</code> add karein."
+        )
+
+    bot_uname = ''
+    try:
+        bot_uname = bot.get_me().username
+    except Exception:
+        pass
+
+    if not group(m):
+        room_id = f"dm_{m.from_user.id}"
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton('🎮 Open 3D Ludo King', web_app=types.WebAppInfo(url=f"{base}/ludo3d?room={room_id}")))
+        return bot.reply_to(
+            m,
+            "👑 <b>MISHRA 3D LUDO KING</b> 👑\n"
+            "Niche button dabakar 3D Ludo Board open karein:",
+            reply_markup=kb
+        )
+
     room_id = f"gc_{abs(m.chat.id)}_{uuid.uuid4().hex[:4]}"
     kb = types.InlineKeyboardMarkup(row_width=1)
+    if bot_uname:
+        kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (2-4 Players)', url=f"https://t.me/{bot_uname}?startapp={room_id}"))
+    else:
+        kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (2-4 Players)', url=f"{base}/ludo3d?room={room_id}"))
 
-    if base:
-        bot_uname = ''
-        try:
-            bot_uname = bot.get_me().username
-        except Exception:
-            pass
-        if bot_uname:
-            kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (Mini App)', url=f"https://t.me/{bot_uname}?startapp={room_id}"))
-        else:
-            kb.add(types.InlineKeyboardButton('🎮 Play 3D Ludo King (Mini App)', url=f"{base}/ludo3d?room={room_id}"))
-
-    kb.add(types.InlineKeyboardButton('🖼️ Play Classic Ludo (In-Chat Board)', callback_data=f'ludo:newclassic:{m.from_user.id}'))
-
-    info_note = "" if base else "\n<i>(Tip: Render Environment mein WEBAPP_URL dalne par 3D Mini App button bhi active ho jayega)</i>"
     bot.send_message(
         m.chat.id,
-        f"👑 <b>MISHRA LUDO ARENA</b> 👑\n\n"
-        f"Apna pasandida mode chunein:\n"
-        f"• <b>🎮 3D Ludo King (Mini App):</b> Full 3D board, smooth dice & zero photo reload!\n"
-        f"• <b>🖼️ Classic In-Chat Ludo:</b> Seedha group chat ke andar khelein!{info_note}",
+        f"👑 <b>MISHRA 3D LUDO KING ARENA</b> 👑\n\n"
+        f"🎲 <b>Room ID:</b> <code>{room_id}</code>\n"
+        f"✨ <i>Full 3D Board, 3D Cube Dice, smooth goti animation & real sound effects!</i>\n"
+        f"🏆 Winner ko milenge <b>+100 Coins</b>!\n\n"
+        f"👇 <i>Sabhi players niche button dabakar ek hi 3D room mein join karein:</i>",
         reply_markup=kb
     )
 
-@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('ludo:'))
-def ludo_callback(call):
+# ---------------- GROUP GAME 1: HAND CRICKET (/handcricket & /hc) ----------------
+HC_GAMES = {}
+HC_LOCK = threading.Lock()
+
+def hc_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    if game['over']:
+        return kb
+    if game['p2_id'] is None:
+        kb.add(types.InlineKeyboardButton('🏏 Join Match as Player 2', callback_data=f'hc:{gid}:join'))
+        return kb
+
+    btns = [types.InlineKeyboardButton(f"{n}️⃣", callback_data=f'hc:{gid}:pick:{n}') for n in range(1, 7)]
+    kb.row(btns[0], btns[1], btns[2])
+    kb.row(btns[3], btns[4], btns[5])
+    return kb
+
+def hc_status_text(game):
+    p1 = f"<a href=\"tg://user?id={game['p1_id']}\">{esc(game['p1_name'])}</a>"
+    p2 = f"<a href=\"tg://user?id={game['p2_id']}\">{esc(game['p2_name'])}</a>" if game['p2_id'] else "<i>Waiting for Player 2...</i>"
+
+    if game['p2_id'] is None:
+        return (
+            f"🏏 <b>MISHRA HAND CRICKET (1v1)</b> 🏏\n\n"
+            f"👤 Player 1: {p1}\n"
+            f"👤 Player 2: {p2}\n\n"
+            f"👇 <i>Koi bhi friend niche button dabakar match join karein!</i>"
+        )
+
+    bat_name = p1 if game['batter'] == 1 else p2
+    bowl_name = p2 if game['batter'] == 1 else p1
+    p1_picked = "✅" if game['p1_choice'] is not None else "⏳"
+    p2_picked = "✅" if game['p2_choice'] is not None else "⏳"
+
+    lines = [
+        f"🏏 <b>HAND CRICKET — INNINGS {game['innings']}/2</b> 🏏",
+        f"👤 {p1}: <b>{game['p1_score']}</b> runs {p1_picked}",
+        f"👤 {p2}: <b>{game['p2_score']}</b> runs {p2_picked}",
+    ]
+    if game['target'] is not None:
+        need = max(0, game['target'] - (game['p1_score'] if game['batter'] == 1 else game['p2_score']))
+        lines.append(f"🎯 <b>Target:</b> {game['target']} runs (Jeetne ke liye <b>{need}</b> aur chahiye)")
+
+    if game['last_ball']:
+        lines.append(f"\n📢 <i>{esc(game['last_ball'])}</i>")
+
+    if game['over']:
+        lines.append(f"\n{game['result_text']}")
+    else:
+        lines.append(f"\n🏏 <b>Batting:</b> {bat_name} | ⚾ <b>Bowling:</b> {bowl_name}")
+        lines.append("👇 <i>Dono players chupke se 1 se 6 tak apna number chunein:</i>")
+    return "\n".join(lines)
+
+@bot.message_handler(commands=['handcricket', 'hc'])
+def handcricket_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /handcricket in a group to play!')
+    gid = uuid.uuid4().hex[:8]
+    p2_id, p2_name = None, None
+    if m.reply_to_message and m.reply_to_message.from_user and not m.reply_to_message.from_user.is_bot:
+        if m.reply_to_message.from_user.id != m.from_user.id:
+            p2_id = m.reply_to_message.from_user.id
+            p2_name = user_name(m.reply_to_message.from_user)
+
+    game = {
+        'chat_id': m.chat.id,
+        'p1_id': m.from_user.id,
+        'p1_name': user_name(m.from_user),
+        'p2_id': p2_id,
+        'p2_name': p2_name,
+        'p1_score': 0,
+        'p2_score': 0,
+        'innings': 1,
+        'batter': 1,
+        'target': None,
+        'p1_choice': None,
+        'p2_choice': None,
+        'last_ball': '',
+        'over': False,
+        'result_text': '',
+        'ts': time.time()
+    }
+    with HC_LOCK:
+        now = time.time()
+        for k in list(HC_GAMES.keys()):
+            if now - HC_GAMES[k]['ts'] > 3600:
+                HC_GAMES.pop(k, None)
+        HC_GAMES[gid] = game
+
+    bot.send_message(m.chat.id, hc_status_text(game), reply_markup=hc_keyboard(gid, game))
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('hc:'))
+def hc_callback(call):
     parts = call.data.split(':')
     if len(parts) < 3:
         return
@@ -3667,171 +3690,345 @@ def ludo_callback(call):
     uid = call.from_user.id
     uname = user_name(call.from_user)
 
-    if gid == 'newclassic':
-        bot.answer_callback_query(call.id, '🖼️ Classic Ludo Board tayyar ho raha hai...')
-        launch_classic_ludo_in_chat(call.message.chat.id, uid, uname, replace_msg_id=call.message.message_id)
-        return
-
-    with LUDO_LOCK:
-        game = LUDO_GAMES.get(gid)
+    with HC_LOCK:
+        game = HC_GAMES.get(gid)
         if not game:
-            return bot.answer_callback_query(call.id, '⚠️ Yeh Ludo game expire ho chuka hai. /ludo se naya start karein.', show_alert=True)
-
-        if action == 'rematch':
-            new_gid = uuid.uuid4().hex[:8]
-            new_game = {
-                'chat_id': call.message.chat.id,
-                'board_msg_id': call.message.message_id,
-                'players': [{
-                    'uid': uid,
-                    'name': uname,
-                    'color': LUDO_COLORS[0],
-                    'tokens': [-1, -1, -1, -1]
-                }],
-                'started': False,
-                'over': False,
-                'winner': None,
-                'turn_idx': 0,
-                'dice': 0,
-                'awaiting_move': False,
-                'six_streak': 0,
-                'last_log': f"{uname} ne naya Ludo table banaya!",
-                'ts': time.time()
-            }
-            LUDO_GAMES[new_gid] = new_game
-            bot.answer_callback_query(call.id, '🔄 Naya Ludo Table Ready!')
-            send_or_update_ludo(call.message.chat.id, new_gid, new_game, update_image=True)
-            return
-
+            return bot.answer_callback_query(call.id, '⚠️ Yeh match expire ho chuka hai. /hc se naya start karein.', show_alert=True)
         if game['over']:
             return bot.answer_callback_query(call.id, '🏁 Match khatam ho chuka hai!')
 
         game['ts'] = time.time()
-        game['board_msg_id'] = call.message.message_id
 
         if action == 'join':
-            if game['started']:
-                return bot.answer_callback_query(call.id, 'Match pehle hi start ho chuka hai!', show_alert=True)
-            if any(p['uid'] == uid for p in game['players']):
-                return bot.answer_callback_query(call.id, 'Aap pehle se game mein join hain!', show_alert=True)
-            if len(game['players']) >= 4:
-                return bot.answer_callback_query(call.id, 'Table full hai (4/4 players)!', show_alert=True)
-            col = LUDO_COLORS[len(game['players'])]
-            game['players'].append({
-                'uid': uid,
-                'name': uname,
-                'color': col,
-                'tokens': [-1, -1, -1, -1]
-            })
-            game['last_log'] = f"{uname} ({col['emoji']} {col['name']}) join ho gaye!"
-            bot.answer_callback_query(call.id, f"✅ Aap {col['emoji']} {col['name']} team se join hue!")
-            # Update only caption & buttons on join so the board photo stays rock solid!
-            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
+            if uid == game['p1_id']:
+                return bot.answer_callback_query(call.id, 'Aap pehle se Player 1 hain!', show_alert=True)
+            if game['p2_id'] is not None:
+                return bot.answer_callback_query(call.id, 'Player 2 pehle hi join ho chuka hai!', show_alert=True)
+            game['p2_id'] = uid
+            game['p2_name'] = uname
+            game['last_ball'] = f"{uname} ne match join kiya! 1st Innings shuru."
+            bot.answer_callback_query(call.id, '🏏 Match Joined!')
+            try:
+                bot.edit_message_text(hc_status_text(game), call.message.chat.id, call.message.message_id, reply_markup=hc_keyboard(gid, game))
+            except Exception:
+                pass
+            return
+
+        if action == 'pick' and len(parts) == 4:
+            if uid not in (game['p1_id'], game['p2_id']):
+                return bot.answer_callback_query(call.id, '⛔ Aap is match ke player nahi hain!', show_alert=True)
+            num = int(parts[3])
+            if uid == game['p1_id']:
+                if game['p1_choice'] is not None:
+                    return bot.answer_callback_query(call.id, f"Aapne pehle hi {game['p1_choice']} chun liya hai! Doosre player ka intezar karein.")
+                game['p1_choice'] = num
+            else:
+                if game['p2_choice'] is not None:
+                    return bot.answer_callback_query(call.id, f"Aapne pehle hi {game['p2_choice']} chun liya hai! Doosre player ka intezar karein.")
+                game['p2_choice'] = num
+
+            # Wait until BOTH players have secretly picked their number
+            if game['p1_choice'] is None or game['p2_choice'] is None:
+                bot.answer_callback_query(call.id, f"✅ Aapne {num} lock kiya! Opponent ka intezar...")
+                try:
+                    bot.edit_message_text(hc_status_text(game), call.message.chat.id, call.message.message_id, reply_markup=hc_keyboard(gid, game))
+                except Exception:
+                    pass
+                return
+
+            c1, c2 = game['p1_choice'], game['p2_choice']
+            game['p1_choice'] = None
+            game['p2_choice'] = None
+
+            bat_runs = c1 if game['batter'] == 1 else c2
+            bowl_runs = c2 if game['batter'] == 1 else c1
+            batter_name = game['p1_name'] if game['batter'] == 1 else game['p2_name']
+
+            if bat_runs == bowl_runs:
+                # OUT!
+                if game['innings'] == 1:
+                    first_score = game['p1_score'] if game['batter'] == 1 else game['p2_score']
+                    game['target'] = first_score + 1
+                    game['innings'] = 2
+                    game['batter'] = 2 if game['batter'] == 1 else 1
+                    game['last_ball'] = f"☝️ OUT! Dono ne {bat_runs} chuna! {batter_name} out. Target: {game['target']} runs!"
+                else:
+                    # 2nd innings batter is OUT -> 1st innings batter wins (or tie)
+                    game['over'] = True
+                    if game['p1_score'] > game['p2_score']:
+                        win_uid, win_name = game['p1_id'], game['p1_name']
+                        game['result_text'] = f"🏆 <b>WINNER:</b> <a href=\"tg://user?id={win_uid}\">{esc(win_name)}</a> (+50 Coins) 🎉"
+                    elif game['p2_score'] > game['p1_score']:
+                        win_uid, win_name = game['p2_id'], game['p2_name']
+                        game['result_text'] = f"🏆 <b>WINNER:</b> <a href=\"tg://user?id={win_uid}\">{esc(win_name)}</a> (+50 Coins) 🎉"
+                    else:
+                        win_uid = None
+                        game['result_text'] = "🤝 <b>MATCH TIED!</b> Dono ke barabar runs!"
+                    game['last_ball'] = f"☝️ OUT! Dono ne {bat_runs} chuna! Match khatam."
+                    if win_uid:
+                        with DB_LOCK, connect() as c:
+                            c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (win_uid, ''))
+                            c.execute('UPDATE wallet SET coins=coins+50 WHERE user_id=?', (win_uid,))
+            else:
+                # Runs scored!
+                if game['batter'] == 1:
+                    game['p1_score'] += bat_runs
+                    cur_score = game['p1_score']
+                else:
+                    game['p2_score'] += bat_runs
+                    cur_score = game['p2_score']
+
+                shot = "SIX! 🚀" if bat_runs == 6 else ("FOUR! 🔥" if bat_runs == 4 else f"+{bat_runs} runs!")
+                game['last_ball'] = f"🏏 {batter_name} ne {bat_runs} mara (Bowler: {bowl_runs}) — {shot}"
+
+                if game['innings'] == 2 and cur_score >= game['target']:
+                    game['over'] = True
+                    win_uid = game['p1_id'] if game['batter'] == 1 else game['p2_id']
+                    win_name = game['p1_name'] if game['batter'] == 1 else game['p2_name']
+                    game['result_text'] = f"🏆 <b>TARGET CHASED! Winner:</b> <a href=\"tg://user?id={win_uid}\">{esc(win_name)}</a> (+50 Coins) 🎉"
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (win_uid, ''))
+                        c.execute('UPDATE wallet SET coins=coins+50 WHERE user_id=?', (win_uid,))
+
+            bot.answer_callback_query(call.id, f"Ball played: {c1} vs {c2}")
+            try:
+                bot.edit_message_text(hc_status_text(game), call.message.chat.id, call.message.message_id, reply_markup=hc_keyboard(gid, game))
+            except Exception:
+                pass
+
+# ---------------- GROUP GAME 2: UNDERCOVER SPY WORD GAME (/spy) ----------------
+SPY_WORD_PAIRS = [
+    ("Chai ☕", "Coffee ☕"),
+    ("Virat Kohli 🏏", "Rohit Sharma 🏏"),
+    ("Taj Mahal 🕌", "Red Fort 🏰"),
+    ("Instagram 📱", "Snapchat 👻"),
+    ("Samosa 🥟", "Kachori 🍘"),
+    ("Pubg / BGMI 🎮", "Free Fire 🔥"),
+    ("Goa Beach 🏖️", "Manali Mountains 🏔️"),
+    ("Train 🚆", "Metro 🚇"),
+    ("Pizza 🍕", "Burger 🍔"),
+    ("Cinema Hall 🎬", "Netflix 📺"),
+    ("Cricket Bat 🏏", "Badminton Racket 🏸"),
+    ("Wedding (Shaadi) 💍", "Birthday Party 🎂"),
+    ("Hospital 🏥", "School 🏫"),
+    ("Vrindavan 🕉️", "Ayodhya 🚩"),
+    ("Apple iPhone 🍏", "Samsung Galaxy 📱"),
+    ("Pani Puri 🥙", "Dahi Bhalla 🍲"),
+    ("Police 👮", "Detective 🕵️"),
+    ("Ganga River 🌊", "Yamuna River 🌊"),
+]
+
+SPY_GAMES = {}
+SPY_LOCK = threading.Lock()
+
+def spy_keyboard(gid, game):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    if game['phase'] == 'lobby':
+        if len(game['players']) < 10:
+            kb.add(types.InlineKeyboardButton('🕵️ Join Spy Game', callback_data=f'spy:{gid}:join'))
+        if len(game['players']) >= 3:
+            kb.add(types.InlineKeyboardButton(f"🚀 Start Game ({len(game['players'])} Players)", callback_data=f'spy:{gid}:start'))
+    elif game['phase'] == 'clue':
+        kb.add(types.InlineKeyboardButton('👁️ Apna Secret Word Dekhein', callback_data=f'spy:{gid}:word'))
+        kb.add(types.InlineKeyboardButton('🗳️ Start Voting (Spy Pakdein)', callback_data=f'spy:{gid}:govote'))
+    elif game['phase'] == 'vote':
+        kb.add(types.InlineKeyboardButton('👁️ Apna Secret Word Dekhein', callback_data=f'spy:{gid}:word'))
+        for uid, pinfo in game['players'].items():
+            v_cnt = sum(1 for target_u in game['votes'].values() if target_u == uid)
+            kb.add(types.InlineKeyboardButton(f"🎯 Vote: {pinfo['name'][:16]} ({v_cnt})", callback_data=f'spy:{gid}:vote:{uid}'))
+    return kb
+
+def spy_text(game):
+    plist = "\n".join(
+        f"  • <a href=\"tg://user?id={uid}\">{esc(p['name'])}</a>" + (" ✅ (Voted)" if (game['phase'] == 'vote' and uid in game['votes']) else "")
+        for uid, p in game['players'].items()
+    )
+    if game['phase'] == 'lobby':
+        return (
+            f"🕵️ <b>UNDERCOVER SPY GAME</b> 🕵️\n\n"
+            f"👥 <b>Joined Players ({len(game['players'])}/10):</b>\n{plist}\n\n"
+            f"📜 <b>Rules:</b>\n"
+            f"• Sabhi Citizens ko ek <b>Secret Word</b> milega aur 1 player ko <b>Spy (Alag Word)</b> milega.\n"
+            f"• Group mein 1-1 hint dein aur voting karke Spy ko pakdein!\n\n"
+            f"👇 <i>Kam se kam 3 players join karein aur Start dabayein:</i>"
+        )
+    elif game['phase'] == 'clue':
+        return (
+            f"🕵️ <b>SPY GAME CHALU HO GAYA HAI!</b>\n\n"
+            f"👥 <b>Players:</b>\n{plist}\n\n"
+            f"1️⃣ Sabse pehle niche <b>'👁️ Apna Secret Word Dekhein'</b> button dabakar apna word dekhein (sirf aapko dikhega!).\n"
+            f"2️⃣ Chat mein apne word ke baare mein 1 chhota hint likhein (seedha word mat likhna!).\n"
+            f"3️⃣ Sabke hints ke baad <b>'🗳️ Start Voting'</b> dabayein!"
+        )
+    elif game['phase'] == 'vote':
+        return (
+            f"🗳️ <b>VOTING TIME — SPY KAUN HAI?</b>\n\n"
+            f"👥 <b>Players ({len(game['votes'])}/{len(game['players'])} voted):</b>\n{plist}\n\n"
+            f"👇 <i>Jis par shaq hai uske naam par vote karein:</i>"
+        )
+    else:
+        return game['result_text']
+
+@bot.message_handler(commands=['spy', 'undercover'])
+def spy_cmd(m):
+    if not group(m):
+        return bot.reply_to(m, 'Use /spy in a group with 3+ friends!')
+    gid = uuid.uuid4().hex[:8]
+    game = {
+        'chat_id': m.chat.id,
+        'phase': 'lobby',
+        'players': {m.from_user.id: {'name': user_name(m.from_user)}},
+        'spy_id': None,
+        'citizen_word': '',
+        'spy_word': '',
+        'votes': {},
+        'result_text': '',
+        'ts': time.time()
+    }
+    with SPY_LOCK:
+        now = time.time()
+        for k in list(SPY_GAMES.keys()):
+            if now - SPY_GAMES[k]['ts'] > 3600:
+                SPY_GAMES.pop(k, None)
+        SPY_GAMES[gid] = game
+
+    bot.send_message(m.chat.id, spy_text(game), reply_markup=spy_keyboard(gid, game))
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and call.data.startswith('spy:'))
+def spy_callback(call):
+    parts = call.data.split(':')
+    if len(parts) < 3:
+        return
+    gid = parts[1]
+    action = parts[2]
+    uid = call.from_user.id
+    uname = user_name(call.from_user)
+
+    with SPY_LOCK:
+        game = SPY_GAMES.get(gid)
+        if not game:
+            return bot.answer_callback_query(call.id, '⚠️ Yeh Spy game expire ho chuka hai. /spy se naya start karein.', show_alert=True)
+        if game['phase'] == 'over':
+            return bot.answer_callback_query(call.id, '🏁 Yeh game khatam ho chuka hai!')
+
+        game['ts'] = time.time()
+
+        if action == 'join':
+            if game['phase'] != 'lobby':
+                return bot.answer_callback_query(call.id, 'Game pehle hi start ho chuka hai!', show_alert=True)
+            if uid in game['players']:
+                return bot.answer_callback_query(call.id, 'Aap pehle se join hain!', show_alert=True)
+            if len(game['players']) >= 10:
+                return bot.answer_callback_query(call.id, 'Max 10 players allowed!', show_alert=True)
+            game['players'][uid] = {'name': uname}
+            bot.answer_callback_query(call.id, '🕵️ Aap Spy Game mein join ho gaye!')
+            try:
+                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
+            except Exception:
+                pass
             return
 
         if action == 'start':
-            if game['started']:
-                return bot.answer_callback_query(call.id, 'Match already running!')
-            if not any(p['uid'] == uid for p in game['players']):
-                return bot.answer_callback_query(call.id, 'Sirf joined players hi match start kar sakte hain!', show_alert=True)
-            if len(game['players']) < 2:
-                return bot.answer_callback_query(call.id, 'Kam se kam 2 players chahiye!', show_alert=True)
-            game['started'] = True
-            game['turn_idx'] = 0
-            game['last_log'] = f"Match shuru! {game['players'][0]['name']} ({game['players'][0]['color']['emoji']}) ki pehli baari."
-            bot.answer_callback_query(call.id, '▶️ Ludo Match Started!')
-            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
+            if game['phase'] != 'lobby':
+                return bot.answer_callback_query(call.id, 'Already started!')
+            if uid not in game['players']:
+                return bot.answer_callback_query(call.id, 'Sirf joined players hi start kar sakte hain!', show_alert=True)
+            if len(game['players']) < 3:
+                return bot.answer_callback_query(call.id, 'Kam se kam 3 players chahiye!', show_alert=True)
+            c_word, s_word = random.choice(SPY_WORD_PAIRS)
+            if random.random() < 0.5:
+                c_word, s_word = s_word, c_word
+            game['citizen_word'] = c_word
+            game['spy_word'] = s_word
+            game['spy_id'] = random.choice(list(game['players'].keys()))
+            game['phase'] = 'clue'
+            bot.answer_callback_query(call.id, '🕵️ Roles & Secret Words assigned!')
+            try:
+                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
+            except Exception:
+                pass
             return
 
-        cur = game['players'][game['turn_idx']]
-        if uid != cur['uid']:
-            return bot.answer_callback_query(call.id, f"⛔ Abhi {cur['color']['emoji']} {cur['name']} ki baari hai!", show_alert=True)
+        if action == 'word':
+            if uid not in game['players']:
+                return bot.answer_callback_query(call.id, '⛔ Aap is game mein nahi hain!', show_alert=True)
+            if uid == game['spy_id']:
+                return bot.answer_callback_query(
+                    call.id,
+                    f"🕵️ AAP SPY (UNDERCOVER) HAIN!\nAapka Word: {game['spy_word']}\n(Sabko lage ki aap normal citizen hain!)",
+                    show_alert=True
+                )
+            return bot.answer_callback_query(
+                call.id,
+                f"👤 AAP CITIZEN HAIN!\nSecret Word: {game['citizen_word']}\n(Spy ko dhundhein!)",
+                show_alert=True
+            )
 
-        if action == 'roll':
-            if game['awaiting_move']:
-                return bot.answer_callback_query(call.id, 'Pehle apni goti chunein!', show_alert=True)
-            dval = random.randint(1, 6)
-            game['dice'] = dval
-            if dval == 6:
-                game['six_streak'] += 1
-            else:
-                game['six_streak'] = 0
-
-            if game['six_streak'] >= 3:
-                game['six_streak'] = 0
-                game['last_log'] = f"{cur['name']} ke lagatar teen 6 aaye — turn cancel!"
-                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
-                bot.answer_callback_query(call.id, '🎲 Teen 6! Turn skip ho gaya!')
-                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
-                return
-
-            valid = ludo_valid_moves(cur, dval)
-            if not valid:
-                game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya — koi goti nahi chal sakti."
-                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
-                bot.answer_callback_query(call.id, f'🎲 {dval} aaya — koi move nahi!')
-                send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
-                return
-
-            # Always let the player tap their Goti button clearly so they see what dice they rolled!
-            game['awaiting_move'] = True
-            game['last_log'] = f"{cur['name']} ne 🎲 {dval} roll kiya!"
-            bot.answer_callback_query(call.id, f'🎲 {dval} aaya! Niche goti ka button dabayein.')
-            send_or_update_ludo(call.message.chat.id, gid, game, update_image=False)
+        if action == 'govote':
+            if game['phase'] != 'clue':
+                return bot.answer_callback_query(call.id, 'Voting already active!')
+            if uid not in game['players']:
+                return bot.answer_callback_query(call.id, '⛔ Sirf players hi voting shuru kar sakte hain!', show_alert=True)
+            game['phase'] = 'vote'
+            bot.answer_callback_query(call.id, '🗳️ Voting shuru ho gayi hai!')
+            try:
+                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
+            except Exception:
+                pass
             return
 
-        if action == 'mv' and len(parts) == 4:
-            tidx = int(parts[3])
-            dval = game['dice']
-            valid = ludo_valid_moves(cur, dval)
-            if tidx not in valid:
-                return bot.answer_callback_query(call.id, 'Invalid token move!', show_alert=True)
+        if action == 'vote' and len(parts) == 4:
+            if game['phase'] != 'vote':
+                return bot.answer_callback_query(call.id, 'Abhi voting phase nahi hai!')
+            if uid not in game['players']:
+                return bot.answer_callback_query(call.id, '⛔ Aap is game ke player nahi hain!', show_alert=True)
+            target_uid = int(parts[3])
+            if target_uid == uid:
+                return bot.answer_callback_query(call.id, 'Khud ko vote nahi de sakte!', show_alert=True)
+            game['votes'][uid] = target_uid
 
-            old_pos = cur['tokens'][tidx]
-            new_pos = 0 if old_pos == -1 else old_pos + dval
-            cur['tokens'][tidx] = new_pos
-            game['awaiting_move'] = False
-            bonus_turn = (dval == 6)
-            cut_msg = ""
+            # Check if all players have voted
+            if len(game['votes']) >= len(game['players']):
+                tally = defaultdict(int)
+                for voted_u in game['votes'].values():
+                    tally[voted_u] += 1
+                top_voted_uid = max(tally.items(), key=lambda x: x[1])[0]
+                spy_uid = game['spy_id']
+                spy_name = game['players'][spy_uid]['name']
+                voted_name = game['players'][top_voted_uid]['name']
+                game['phase'] = 'over'
 
-            if 0 <= new_pos <= 50:
-                g_idx = (cur['color']['start'] + new_pos) % 52
-                if g_idx not in LUDO_SAFE_INDICES:
-                    for opp in game['players']:
-                        if opp['uid'] == cur['uid']:
-                            continue
-                        for o_tidx, o_pos in enumerate(opp['tokens']):
-                            if 0 <= o_pos <= 50:
-                                o_gidx = (opp['color']['start'] + o_pos) % 52
-                                if o_gidx == g_idx:
-                                    opp['tokens'][o_tidx] = -1
-                                    bonus_turn = True
-                                    cut_msg = f" 💥 {opp['name']} ki goti kaat di!"
+                if top_voted_uid == spy_uid:
+                    # Citizens win! Award +50 coins to each citizen
+                    with DB_LOCK, connect() as c:
+                        for p_u in game['players']:
+                            if p_u != spy_uid:
+                                c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (p_u, ''))
+                                c.execute('UPDATE wallet SET coins=coins+50 WHERE user_id=?', (p_u,))
+                    game['result_text'] = (
+                        f"🎉 <b>CITIZENS JEET GAYE! SPY PAKDA GAYA!</b> 🎉\n\n"
+                        f"🕵️ Asli Spy tha: <a href=\"tg://user?id={spy_uid}\">{esc(spy_name)}</a>\n"
+                        f"📌 Citizen Word: <b>{esc(game['citizen_word'])}</b> | Spy Word: <b>{esc(game['spy_word'])}</b>\n"
+                        f"🪙 Sabhi Citizens ko <b>+50 Coins</b> mile!"
+                    )
+                else:
+                    # Spy escapes and wins +80 coins!
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (spy_uid, ''))
+                        c.execute('UPDATE wallet SET coins=coins+80 WHERE user_id=?', (spy_uid,))
+                    game['result_text'] = (
+                        f"😈 <b>SPY JEET GAYA! BACH NIKLA!</b> 😈\n\n"
+                        f"❌ Sabne <a href=\"tg://user?id={top_voted_uid}\">{esc(voted_name)}</a> ko vote kiya, jabki...\n"
+                        f"🕵️ Asli Spy tha: <a href=\"tg://user?id={spy_uid}\">{esc(spy_name)}</a>!\n"
+                        f"📌 Citizen Word: <b>{esc(game['citizen_word'])}</b> | Spy Word: <b>{esc(game['spy_word'])}</b>\n"
+                        f"🪙 Spy ko mile <b>+80 Coins</b>!"
+                    )
 
-            if new_pos == 56:
-                bonus_turn = True
-                cut_msg += " 🏠 Goti Home pahunch gayi!"
-
-            action_desc = "bahar nikali" if old_pos == -1 else f"{dval} step chali"
-            game['last_log'] = f"{cur['name']} (🎲 {dval}): Goti {tidx+1} {action_desc}.{cut_msg}"
-
-            if all(p_pos == 56 for p_pos in cur['tokens']):
-                game['over'] = True
-                game['winner'] = cur
-                with DB_LOCK, connect() as c:
-                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (cur['uid'], ''))
-                    c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (cur['uid'],))
-                bot.answer_callback_query(call.id, '🏆 MUBARAK HO! Aap Ludo Jeet Gaye!')
-                send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
-                return
-
-            if not bonus_turn:
-                game['six_streak'] = 0
-                game['turn_idx'] = (game['turn_idx'] + 1) % len(game['players'])
-
-            bot.answer_callback_query(call.id, f'✅ Goti {tidx+1} moved!')
-            # Only update the board image in-place when a token moves on the board!
-            send_or_update_ludo(call.message.chat.id, gid, game, update_image=True)
+            bot.answer_callback_query(call.id, '🗳️ Vote recorded!')
+            try:
+                bot.edit_message_text(spy_text(game), call.message.chat.id, call.message.message_id, reply_markup=spy_keyboard(gid, game))
+            except Exception:
+                pass
 
 # ---------------- GROUP MESSAGE MONITOR (LAST HANDLER) ----------------
 @bot.message_handler(func=lambda m: True, content_types=['text','sticker','animation','photo','video','document','audio','voice','video_note','contact','location','venue','poll','dice'])

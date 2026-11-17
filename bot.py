@@ -217,104 +217,111 @@ def target_usage(m):
 LUDO3D_ROOMS = {}
 LUDO3D_LOCK = threading.Lock()
 
+LUDO3D_COLORS = [
+    {'key': 'R', 'name': 'Red', 'start': 0},
+    {'key': 'G', 'name': 'Green', 'start': 13},
+    {'key': 'Y', 'name': 'Yellow', 'start': 26},
+    {'key': 'B', 'name': 'Blue', 'start': 39},
+]
+
 LUDO3D_HTML = r'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Mishra 3D Ludo King Royal</title>
+<title>Mishra 3D Ludo King</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; padding: 0;
-    background: radial-gradient(ellipse at top, #1b2845 0%, #090d16 100%);
+    background: radial-gradient(circle at 50% 12%, #293b6b 0%, #11182c 65%, #080b14 100%);
     color: #fff; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden;
   }
   .header {
     width: 100%; max-width: 440px; padding: 10px 14px;
     display: flex; justify-content: space-between; align-items: center;
-    background: rgba(255,255,255,0.05); backdrop-filter: blur(8px);
-    border-bottom: 1px solid rgba(255,215,0,0.18);
+    background: rgba(255,255,255,0.06); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,215,0,0.22);
   }
-  .title { font-weight: 900; font-size: 16px; letter-spacing: 0.6px; color: #ffd54f; text-shadow: 0 2px 8px rgba(255,213,79,0.4); }
-  .header-right { display: flex; align-items: center; gap: 6px; }
-  .room-badge { font-size: 11px; background: rgba(43,58,103,0.9); padding: 4px 9px; border-radius: 12px; color: #90caf9; font-weight: 700; border: 1px solid rgba(144,202,249,0.25); }
-  .sound-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; border-radius: 50%; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .title { font-weight: 900; font-size: 16px; letter-spacing: 0.6px; color: #ffd54f; text-shadow: 0 2px 10px rgba(255,213,79,0.5); }
+  .header-right { display: flex; align-items: center; gap: 7px; }
+  .room-badge { font-size: 11px; background: rgba(43,58,103,0.95); padding: 4px 10px; border-radius: 14px; color: #90caf9; font-weight: 700; border: 1px solid rgba(144,202,249,0.3); }
+  .sound-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; border-radius: 50%; width: 30px; height: 30px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
   .players-bar {
     width: 100%; max-width: 440px; display: grid; grid-template-columns: repeat(2, 1fr);
-    gap: 7px; padding: 8px 12px;
+    gap: 8px; padding: 8px 12px;
   }
   .p-card {
-    background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
-    border-radius: 14px; padding: 7px 11px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+    border-radius: 16px; padding: 8px 11px;
     display: flex; align-items: center; justify-content: space-between;
-    border: 2px solid rgba(255,255,255,0.06); transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    border: 2px solid rgba(255,255,255,0.08); transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .p-card.active {
-    border-color: #ffd54f; background: linear-gradient(145deg, rgba(255,213,79,0.22), rgba(255,160,0,0.08));
-    box-shadow: 0 0 18px rgba(255, 213, 79, 0.4); transform: translateY(-1px) scale(1.02);
+    border-color: #ffd54f; background: linear-gradient(145deg, rgba(255,213,79,0.28), rgba(255,152,0,0.12));
+    box-shadow: 0 0 20px rgba(255, 213, 79, 0.45); transform: translateY(-2px) scale(1.02);
   }
   .p-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
   .pawn-badge {
-    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
-    box-shadow: inset -3px -3px 5px rgba(0,0,0,0.45), inset 2px 2px 4px rgba(255,255,255,0.7), 0 2px 5px rgba(0,0,0,0.5);
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    box-shadow: inset -3px -3px 5px rgba(0,0,0,0.45), inset 2px 2px 5px rgba(255,255,255,0.8), 0 3px 6px rgba(0,0,0,0.5);
   }
-  .p-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 105px; }
-  .p-score { font-size: 11px; color: #ffe082; font-weight: 700; }
+  .p-name { font-size: 12px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+  .p-tag { font-size: 10px; color: #ffd54f; font-weight: 800; }
+  .p-score { font-size: 11px; color: #ffe082; font-weight: 800; background: rgba(0,0,0,0.3); padding: 2px 7px; border-radius: 10px; }
 
   .board-stage {
     width: 94vw; max-width: 416px; aspect-ratio: 1 / 1;
-    margin: 4px auto; perspective: 1000px;
+    margin: 4px auto; perspective: 1050px;
   }
   .board-wrap {
-    width: 100%; height: 100%; padding: 10px; border-radius: 24px;
-    background: linear-gradient(145deg, #8d4e24, #4a230b);
-    box-shadow: 0 22px 45px rgba(0,0,0,0.75), 0 4px 0 #2d1405, inset 0 2px 5px rgba(255,220,160,0.35);
+    width: 100%; height: 100%; padding: 11px; border-radius: 26px;
+    background: linear-gradient(145deg, #9c5728, #4d240b);
+    box-shadow: 0 24px 48px rgba(0,0,0,0.78), 0 5px 0 #2b1204, inset 0 2px 6px rgba(255,224,178,0.45);
     transform: rotateX(7deg);
-    transition: transform 0.35s ease;
   }
   canvas {
-    width: 100%; height: 100%; display: block; border-radius: 14px;
+    width: 100%; height: 100%; display: block; border-radius: 16px;
     background: #fff; box-shadow: inset 0 0 10px rgba(0,0,0,0.35);
   }
 
   .controls {
-    width: 100%; max-width: 440px; padding: 10px 14px 16px;
+    width: 100%; max-width: 440px; padding: 10px 14px 18px;
     display: flex; flex-direction: column; align-items: center; gap: 10px;
   }
   .status-msg {
     font-size: 13px; font-weight: 700; color: #fff8e1; text-align: center;
-    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
-    padding: 8px 14px; border-radius: 20px; width: 100%;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16);
+    padding: 8px 14px; border-radius: 22px; width: 100%;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.28);
   }
-  .dice-row { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; }
+  .dice-row { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; min-height: 68px; }
 
   /* Real 3D Cube Dice */
-  .cube-scene { width: 64px; height: 64px; perspective: 400px; cursor: pointer; }
+  .cube-scene { width: 64px; height: 64px; perspective: 420px; cursor: pointer; }
   .cube {
     width: 100%; height: 100%; position: relative; transform-style: preserve-3d;
     transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.15);
   }
-  .cube.rolling { animation: tumble3d 0.48s infinite linear; }
+  .cube.rolling { animation: tumble3d 0.45s infinite linear; }
   @keyframes tumble3d {
     0%   { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1.1); }
     50%  { transform: rotateX(220deg) rotateY(160deg) rotateZ(90deg) scale(1.18); }
     100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg) scale(1.1); }
   }
   .face {
-    position: absolute; width: 64px; height: 64px; border-radius: 14px;
-    background: radial-gradient(circle at 30% 30%, #ffffff, #e2e6ec);
+    position: absolute; width: 64px; height: 64px; border-radius: 15px;
+    background: radial-gradient(circle at 30% 30%, #ffffff, #e6eaf0);
     border: 2px solid #cfd8dc;
     box-shadow: inset 0 0 8px rgba(0,0,0,0.15);
     display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
     padding: 8px; gap: 3px;
   }
   .pip { width: 11px; height: 11px; border-radius: 50%; background: #1e272e; align-self: center; justify-self: center; box-shadow: inset 0 1px 2px rgba(0,0,0,0.6); }
-  .pip.red { background: #d63031; width: 13px; height: 13px; }
+  .pip.red { background: #e53935; width: 13px; height: 13px; }
   .f1 { transform: rotateY(0deg) translateZ(32px); }
   .f6 { transform: rotateY(180deg) translateZ(32px); }
   .f2 { transform: rotateY(90deg) translateZ(32px); }
@@ -323,8 +330,8 @@ LUDO3D_HTML = r'''<!DOCTYPE html>
   .f4 { transform: rotateX(-90deg) translateZ(32px); }
 
   .btn {
-    border: none; border-radius: 16px; padding: 13px 22px; font-size: 14px; font-weight: 800;
-    cursor: pointer; color: #fff; box-shadow: 0 7px 16px rgba(0,0,0,0.4); transition: transform 0.15s, box-shadow 0.15s;
+    border: none; border-radius: 18px; padding: 13px 22px; font-size: 14px; font-weight: 800;
+    cursor: pointer; color: #fff; box-shadow: 0 7px 16px rgba(0,0,0,0.42); transition: transform 0.15s;
   }
   .btn:active { transform: scale(0.95); }
   .btn-join { background: linear-gradient(135deg, #00b894, #00cec9); }
@@ -362,10 +369,25 @@ const params = new URLSearchParams(window.location.search);
 let roomId = params.get('room') || (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || 'default';
 document.getElementById('roomLabel').innerText = 'Room #' + roomId;
 
-const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || {
-  id: Math.floor(Math.random() * 900000) + 100000,
-  first_name: 'Player_' + Math.floor(Math.random() * 99)
-};
+// Persistent unique ID per device/session even if Telegram initDataUnsafe is unavailable
+function resolveCurrentUser() {
+  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+    return {
+      id: String(tg.initDataUnsafe.user.id),
+      name: tg.initDataUnsafe.user.first_name || 'Player'
+    };
+  }
+  let savedId = localStorage.getItem('mishra_ludo_uid');
+  let savedName = localStorage.getItem('mishra_ludo_uname');
+  if (!savedId) {
+    savedId = 'guest_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    savedName = 'Guest_' + Math.floor(100 + Math.random() * 900);
+    localStorage.setItem('mishra_ludo_uid', savedId);
+    localStorage.setItem('mishra_ludo_uname', savedName);
+  }
+  return { id: savedId, name: savedName };
+}
+const user = resolveCurrentUser();
 
 let soundOn = true;
 function toggleSound() {
@@ -379,7 +401,7 @@ function playTone(freq, dur, type='sine') {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type; osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.setValueAtTime(0.11, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(); osc.stop(ctx.currentTime + dur);
@@ -387,10 +409,10 @@ function playTone(freq, dur, type='sine') {
 }
 
 const COLORS = [
-  { key: 'R', name: 'Red', hex: '#e53935', mid: '#ff5252', dark: '#7f0000', light: '#ffcdd2', start: 0 },
-  { key: 'G', name: 'Green', hex: '#2e7d32', mid: '#66bb6a', dark: '#005005', light: '#c8e6c9', start: 13 },
-  { key: 'Y', name: 'Yellow', hex: '#f9a825', mid: '#ffee58', dark: '#bc5100', light: '#fff9c4', start: 26 },
-  { key: 'B', name: 'Blue', hex: '#1565c0', mid: '#42a5f5', dark: '#003c8f', light: '#bbdefb', start: 39 }
+  { key: 'R', name: 'Red', hex: '#ff3b5c', mid: '#ff758f', dark: '#9e0022', light: '#ffe0e6', start: 0 },
+  { key: 'G', name: 'Green', hex: '#2ec4b6', mid: '#72efdd', dark: '#0b6e65', light: '#d8f8f5', start: 13 },
+  { key: 'Y', name: 'Yellow', hex: '#ffbe0b', mid: '#ffe169', dark: '#b37400', light: '#fff6d6', start: 26 },
+  { key: 'B', name: 'Blue', hex: '#3a86ff', mid: '#80b3ff', dark: '#0a47a9', light: '#dceaff', start: 39 }
 ];
 
 const TRACK = [
@@ -425,11 +447,12 @@ const CUBE_ROT = {
 };
 
 let state = null;
-let prevTokensMap = {};
 let animPositions = {};
 let rollingAnim = false;
+let actionBusy = false;
 let clickableTokens = [];
 let pulsePhase = 0;
+let lastUiSignature = '';
 
 const canvas = document.getElementById('ludoCanvas');
 const ctx = canvas.getContext('2d');
@@ -465,59 +488,61 @@ function drawStar(cx, cy, rOut, rIn, fill, stroke) {
   ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke();
 }
 
-function draw3DPawn(x, y, rad, col, num, isMovable) {
-  const bounce = isMovable ? Math.sin(pulsePhase) * 3.5 : 0;
+function drawCute3DPawn(x, y, rad, col, num, isMovable) {
+  const bounce = isMovable ? Math.sin(pulsePhase) * 4 : 0;
   const py = y - bounce;
 
   if (isMovable) {
-    const glowR = rad + 8 + Math.sin(pulsePhase) * 2.5;
+    const glowR = rad + 9 + Math.sin(pulsePhase) * 3;
     ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 215, 0, 0.35)'; ctx.fill();
-    ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.42)'; ctx.fill();
+    ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 3; ctx.stroke();
   }
 
-  // Ground shadow
-  ctx.beginPath(); ctx.ellipse(x + 2, y + rad * 0.65, rad * 0.95, rad * 0.45, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fill();
+  // Soft ground shadow
+  ctx.beginPath(); ctx.ellipse(x + 2, y + rad * 0.72, rad * 0.95, rad * 0.42, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fill();
 
-  // 3D Pawn Base Ring
-  ctx.beginPath(); ctx.arc(x, py + 2, rad, 0, Math.PI * 2);
+  // 3D Pawn Skirt/Base
+  ctx.beginPath(); ctx.arc(x, py + 3, rad, 0, Math.PI * 2);
   ctx.fillStyle = col.dark; ctx.fill();
 
-  // 3D Glossy Sphere Body
+  // 3D Glossy Body
   const grad = ctx.createRadialGradient(x - rad * 0.35, py - rad * 0.4, 2, x, py, rad);
   grad.addColorStop(0, '#ffffff');
-  grad.addColorStop(0.25, col.mid);
-  grad.addColorStop(0.75, col.hex);
+  grad.addColorStop(0.28, col.mid);
+  grad.addColorStop(0.78, col.hex);
   grad.addColorStop(1, col.dark);
 
-  ctx.beginPath(); ctx.arc(x, py, rad * 0.92, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(x, py, rad * 0.94, 0, Math.PI * 2);
   ctx.fillStyle = grad; ctx.fill();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.2; ctx.stroke();
+
+  // Cute glossy eye/shine highlight
+  ctx.beginPath(); ctx.ellipse(x - rad * 0.32, py - rad * 0.35, rad * 0.22, rad * 0.12, -0.6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
 
   // Token Number
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(String(num), x, py + 1);
+  ctx.fillText(String(num), x, py + 2);
 }
 
 function drawBoard() {
   const cell = 44;
   ctx.clearRect(0, 0, 660, 660);
 
-  // Crisp marble-white grid
   for (let r = 0; r < 15; r++) {
     for (let c = 0; c < 15; c++) {
-      ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#f5f7fa';
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#f4f7fb';
       ctx.fillRect(c * cell, r * cell, cell, cell);
-      ctx.strokeStyle = '#cfd8dc';
+      ctx.strokeStyle = '#d5dee8';
       ctx.lineWidth = 1;
       ctx.strokeRect(c * cell, r * cell, cell, cell);
     }
   }
 
-  // 4 Royal Corner Yards
   const houses = [
     { r: 0, c: 0, col: COLORS[0] },
     { r: 0, c: 9, col: COLORS[1] },
@@ -532,11 +557,10 @@ function drawBoard() {
     ctx.fillRect(x, y, w, w);
     ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, w);
 
-    // 3D Recessed White Court
     ctx.fillStyle = h.col.dark;
-    ctx.beginPath(); ctx.roundRect(x + 30, y + 33, w - 56, w - 56, 24); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + 30, y + 33, w - 56, w - 56, 26); ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.roundRect(x + 28, y + 28, w - 56, w - 56, 24); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + 28, y + 28, w - 56, w - 56, 26); ctx.fill();
 
     YARDS[h.col.key].forEach(([yr, yc]) => {
       const scx = yc * cell, scy = yr * cell;
@@ -546,7 +570,6 @@ function drawBoard() {
     });
   });
 
-  // Home Stretches & Start Squares
   COLORS.forEach(col => {
     const [sr, sc] = TRACK[col.start];
     ctx.fillStyle = col.hex;
@@ -558,7 +581,6 @@ function drawBoard() {
     });
   });
 
-  // Safe Stars
   SAFES.forEach(idx => {
     const [sr, sc] = TRACK[idx];
     const cx = sc * cell + cell / 2, cy = sr * cell + cell / 2;
@@ -566,7 +588,6 @@ function drawBoard() {
     drawStar(cx, cy, 14, 6.5, isStart ? '#ffffff' : '#cfd8dc', isStart ? '#37474f' : '#78909c');
   });
 
-  // Center 3x3 Crown Home
   const cx0 = 6 * cell, cy0 = 6 * cell, cx1 = 9 * cell, cy1 = 9 * cell, mx = 330, my = 330;
   const tris = [
     { pts: [[cx0,cy0],[cx0,cy1],[mx,my]], fill: COLORS[0].hex },
@@ -580,7 +601,7 @@ function drawBoard() {
     ctx.closePath(); ctx.fillStyle = t.fill; ctx.fill();
     ctx.strokeStyle = '#263238'; ctx.lineWidth = 1.5; ctx.stroke();
   });
-  ctx.beginPath(); ctx.arc(mx, my, 18, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(mx, my, 19, 0, Math.PI * 2);
   ctx.fillStyle = '#ffd54f'; ctx.fill(); ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 2; ctx.stroke();
 
   if (!state) return;
@@ -589,7 +610,6 @@ function drawBoard() {
   const curPlayer = state.players[state.turn_idx];
   const isMyTurn = state.started && !state.over && curPlayer && String(curPlayer.uid) === String(user.id);
 
-  // Smoothly interpolate token coordinates for silky 60fps movement
   const renderList = [];
   state.players.forEach((p, pIdx) => {
     const col = COLORS[pIdx];
@@ -599,11 +619,11 @@ function drawBoard() {
       if (!animPositions[idKey]) {
         animPositions[idKey] = { x: target.x, y: target.y };
       } else {
-        animPositions[idKey].x += (target.x - animPositions[idKey].x) * 0.25;
-        animPositions[idKey].y += (target.y - animPositions[idKey].y) * 0.25;
+        animPositions[idKey].x += (target.x - animPositions[idKey].x) * 0.28;
+        animPositions[idKey].y += (target.y - animPositions[idKey].y) * 0.28;
       }
 
-      const canMove = isMyTurn && state.awaiting_move && p.uid === curPlayer.uid &&
+      const canMove = isMyTurn && state.awaiting_move && String(p.uid) === String(curPlayer.uid) &&
                       ((pos === -1 && state.dice === 6) || (pos >= 0 && pos < 56 && pos + state.dice <= 56));
 
       renderList.push({
@@ -615,7 +635,6 @@ function drawBoard() {
     });
   });
 
-  // Offset overlapping tokens slightly
   for (let i = 0; i < renderList.length; i++) {
     let sameCount = 0;
     for (let j = 0; j < i; j++) {
@@ -630,9 +649,9 @@ function drawBoard() {
     const rad = sameCount > 0 ? 12 : 16;
 
     if (item.canMove) {
-      clickableTokens.push({ x: fx, y: fy, rad: 25, tIdx: item.tIdx });
+      clickableTokens.push({ x: fx, y: fy, rad: 26, tIdx: item.tIdx });
     }
-    draw3DPawn(fx, fy, rad, item.col, item.tIdx + 1, item.canMove);
+    drawCute3DPawn(fx, fy, rad, item.col, item.tIdx + 1, item.canMove);
   }
 }
 
@@ -644,7 +663,7 @@ function animLoop() {
 requestAnimationFrame(animLoop);
 
 canvas.addEventListener('click', (e) => {
-  if (!clickableTokens.length) return;
+  if (!clickableTokens.length || actionBusy) return;
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
@@ -674,20 +693,44 @@ function build3DCubeHTML(diceVal, isRolling) {
   `;
 }
 
+function triggerRoll() {
+  if (rollingAnim || actionBusy) return;
+  rollingAnim = true;
+  lastUiSignature = '';
+  renderUI();
+  playTone(420, 0.1, 'square');
+  setTimeout(() => {
+    rollingAnim = false;
+    sendAction('roll');
+  }, 420);
+}
+
 function renderUI() {
   if (!state) return;
+  const sig = JSON.stringify({
+    s: state.started, o: state.over, t: state.turn_idx, d: state.dice,
+    am: state.awaiting_move, log: state.last_log, r: rollingAnim, b: actionBusy,
+    p: state.players.map(x => [x.uid, x.name, x.tokens])
+  });
+  if (sig === lastUiSignature) return;
+  lastUiSignature = sig;
+
   const bar = document.getElementById('playersBar');
   bar.innerHTML = '';
   state.players.forEach((p, idx) => {
     const col = COLORS[idx];
     const done = p.tokens.filter(t => t === 56).length;
     const isTurn = state.started && !state.over && idx === state.turn_idx;
+    const isMe = String(p.uid) === String(user.id);
     const card = document.createElement('div');
     card.className = 'p-card' + (isTurn ? ' active' : '');
     card.innerHTML = `
       <div class="p-info">
         <div class="pawn-badge" style="background:radial-gradient(circle at 30% 30%, #fff, ${col.hex}, ${col.dark})"></div>
-        <div class="p-name">${p.name}</div>
+        <div>
+          <div class="p-name">${p.name} ${isMe ? '(You)' : ''}</div>
+          ${isTurn ? '<div class="p-tag">🎯 TURN</div>' : ''}
+        </div>
       </div>
       <div class="p-score">🏠 ${done}/4</div>
     `;
@@ -725,47 +768,40 @@ function renderUI() {
     actionRow.appendChild(btnR);
   } else {
     const cur = state.players[state.turn_idx];
-    const isMine = String(cur.uid) === String(user.id);
+    const isMine = cur && String(cur.uid) === String(user.id);
     if (state.awaiting_move) {
       statusEl.innerText = isMine
         ? `🎲 Dice ${state.dice} aaya! Chamakti hui 3D goti par tap karein!`
-        : `${cur.name} ne 🎲 ${state.dice} roll kiya — goti chal rahe hain...`;
+        : `⏳ ${cur.name} ne 🎲 ${state.dice} roll kiya — goti chal rahe hain...`;
     } else {
       statusEl.innerText = isMine
         ? `👉 Aapki baari hai! 3D Cube Dice par tap karein!`
-        : `⏳ ${cur.name} ki baari hai...`;
+        : `⏳ Abhi ${cur.name} ki baari hai...`;
     }
 
     const cubeScene = document.createElement('div');
     cubeScene.className = 'cube-scene';
     cubeScene.innerHTML = build3DCubeHTML(state.dice || 1, rollingAnim);
-    if (isMine && !state.awaiting_move) {
-      cubeScene.onclick = () => {
-        playTone(420, 0.1, 'square');
-        rollingAnim = true; renderUI();
-        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 450);
-      };
+    if (isMine && !state.awaiting_move && !actionBusy) {
+      cubeScene.onclick = triggerRoll;
     }
     actionRow.appendChild(cubeScene);
 
-    if (isMine && !state.awaiting_move) {
+    if (isMine && !state.awaiting_move && !actionBusy) {
       const btnRoll = document.createElement('button');
       btnRoll.className = 'btn btn-roll';
       btnRoll.innerText = '🎲 Roll 3D Dice';
-      btnRoll.onclick = () => {
-        playTone(420, 0.1, 'square');
-        rollingAnim = true; renderUI();
-        setTimeout(() => { rollingAnim = false; sendAction('roll'); }, 450);
-      };
+      btnRoll.onclick = triggerRoll;
       actionRow.appendChild(btnRoll);
     }
   }
 }
 
 async function fetchState() {
+  if (rollingAnim || actionBusy) return;
   try {
     const res = await fetch(`/api/ludo3d?room=${encodeURIComponent(roomId)}`);
-    if (res.ok) {
+    if (res.ok && !rollingAnim && !actionBusy) {
       state = await res.json();
       renderUI();
     }
@@ -773,6 +809,10 @@ async function fetchState() {
 }
 
 async function sendAction(action, tokenIdx = -1) {
+  if (actionBusy) return;
+  actionBusy = true;
+  lastUiSignature = '';
+  renderUI();
   try {
     const res = await fetch('/api/ludo3d', {
       method: 'POST',
@@ -780,16 +820,18 @@ async function sendAction(action, tokenIdx = -1) {
       body: JSON.stringify({
         room: roomId,
         action: action,
-        uid: user.id,
-        name: user.first_name || 'Player',
+        uid: String(user.id),
+        name: user.name || 'Player',
         token: tokenIdx
       })
     });
     if (res.ok) {
       state = await res.json();
-      renderUI();
     }
   } catch (e) {}
+  actionBusy = false;
+  lastUiSignature = '';
+  renderUI();
 }
 
 fetchState();
@@ -823,11 +865,14 @@ def get_or_create_3d_room(room_id):
 def handle_3d_ludo_post(data):
     room_id = str(data.get('room', 'default'))[:24]
     action = str(data.get('action', ''))
-    uid = int(data.get('uid', 0))
+    uid = str(data.get('uid', '')).strip()
     uname = str(data.get('name', 'Player'))[:24]
     tidx = int(data.get('token', -1))
 
     room = get_or_create_3d_room(room_id)
+    if not uid:
+        return room
+
     with LUDO3D_LOCK:
         room['ts'] = time.time()
         if action == 'rematch':
@@ -846,44 +891,67 @@ def handle_3d_ludo_post(data):
             return room
 
         if action == 'join':
-            if not room['started'] and len(room['players']) < 4 and not any(p['uid'] == uid for p in room['players']):
+            if not room['started'] and len(room['players']) < 4 and not any(str(p['uid']) == uid for p in room['players']):
                 room['players'].append({'uid': uid, 'name': uname, 'tokens': [-1, -1, -1, -1]})
                 room['last_log'] = f"{uname} ne 3D Ludo join kiya!"
             return room
 
         if action == 'start':
-            if not room['started'] and len(room['players']) >= 2 and any(p['uid'] == uid for p in room['players']):
+            if not room['started'] and len(room['players']) >= 2 and any(str(p['uid']) == uid for p in room['players']):
                 room['started'] = True
                 room['turn_idx'] = 0
+                room['awaiting_move'] = False
+                room['six_streak'] = 0
                 room['last_log'] = f"Match shuru! {room['players'][0]['name']} ki baari."
             return room
 
         if not room['started'] or not room['players']:
             return room
 
+        num_p = len(room['players'])
+        room['turn_idx'] = room['turn_idx'] % num_p
         cur = room['players'][room['turn_idx']]
-        if cur['uid'] != uid:
+
+        # Strict turn enforcement: ONLY the current turn's player can roll or move!
+        if str(cur['uid']) != uid:
             return room
 
-        if action == 'roll' and not room['awaiting_move']:
+        if action == 'roll':
+            if room['awaiting_move']:
+                return room
             dval = random.randint(1, 6)
             room['dice'] = dval
             room['six_streak'] = (room['six_streak'] + 1) if dval == 6 else 0
+
+            # Three consecutive 6s -> forfeit turn immediately to next player
             if room['six_streak'] >= 3:
                 room['six_streak'] = 0
-                room['last_log'] = f"{cur['name']} ke teen 6 aaye — turn skip!"
-                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+                room['awaiting_move'] = False
+                room['turn_idx'] = (room['turn_idx'] + 1) % num_p
+                nxt_name = room['players'][room['turn_idx']]['name']
+                room['last_log'] = f"{cur['name']} ke lagatar 3 sixes aaye — turn skip! Ab {nxt_name} ki baari."
                 return room
 
             valid = [i for i, pos in enumerate(cur['tokens']) if (pos == -1 and dval == 6) or (0 <= pos < 56 and pos + dval <= 56)]
             if not valid:
-                room['last_log'] = f"{cur['name']} ne {dval} roll kiya — koi chal nahi."
-                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+                # No valid token can move -> pass turn strictly to next player
+                room['six_streak'] = 0
+                room['awaiting_move'] = False
+                room['turn_idx'] = (room['turn_idx'] + 1) % num_p
+                nxt_name = room['players'][room['turn_idx']]['name']
+                room['last_log'] = f"{cur['name']} ne {dval} roll kiya (koi chal nahi). Ab {nxt_name} ki baari!"
                 return room
 
-            room['awaiting_move'] = True
-            room['last_log'] = f"{cur['name']} ne {dval} roll kiya!"
-            return room
+            # Auto-move if only 1 unique move is possible (e.g. all tokens in yard and rolled 6, or only 1 token open)
+            unique_positions = {cur['tokens'][i] for i in valid}
+            if len(valid) == 1 or len(unique_positions) == 1:
+                tidx = valid[0]
+                action = 'mv'
+                room['awaiting_move'] = True
+            else:
+                room['awaiting_move'] = True
+                room['last_log'] = f"{cur['name']} ne {dval} roll kiya! Goti chunein."
+                return room
 
         if action == 'mv' and room['awaiting_move'] and 0 <= tidx < 4:
             dval = room['dice']
@@ -898,13 +966,13 @@ def handle_3d_ludo_post(data):
             cut_txt = ''
 
             if 0 <= new_pos <= 50:
-                my_start = LUDO_COLORS[room['turn_idx']]['start']
+                my_start = LUDO3D_COLORS[room['turn_idx']]['start']
                 g_idx = (my_start + new_pos) % 52
                 if g_idx not in LUDO_SAFE_INDICES:
                     for o_idx, opp in enumerate(room['players']):
-                        if opp['uid'] == uid:
+                        if str(opp['uid']) == uid:
                             continue
-                        opp_start = LUDO_COLORS[o_idx]['start']
+                        opp_start = LUDO3D_COLORS[o_idx]['start']
                         for ot_i, o_pos in enumerate(opp['tokens']):
                             if 0 <= o_pos <= 50 and ((opp_start + o_pos) % 52) == g_idx:
                                 opp['tokens'][ot_i] = -1
@@ -915,19 +983,24 @@ def handle_3d_ludo_post(data):
                 bonus = True
                 cut_txt += " 🏠 Goti Home!"
 
-            room['last_log'] = f"{cur['name']} ({dval}): Goti {tidx+1} chali.{cut_txt}"
-
             if all(t == 56 for t in cur['tokens']):
                 room['over'] = True
                 room['winner_name'] = cur['name']
-                with DB_LOCK, connect() as c:
-                    c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (uid, ''))
-                    c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (uid,))
+                room['last_log'] = f"🏆 {cur['name']} Ludo jeet gaye!"
+                if uid.isdigit():
+                    with DB_LOCK, connect() as c:
+                        c.execute('INSERT OR IGNORE INTO wallet(user_id,coins,last_daily) VALUES(?,0,?)', (int(uid), ''))
+                        c.execute('UPDATE wallet SET coins=coins+100 WHERE user_id=?', (int(uid),))
                 return room
 
-            if not bonus:
+            if bonus:
+                # Extra turn ONLY on rolling 6, cutting opponent, or reaching Home
+                room['last_log'] = f"{cur['name']} ({dval}): Goti {tidx+1} chali.{cut_txt} Bonus turn!"
+            else:
                 room['six_streak'] = 0
-                room['turn_idx'] = (room['turn_idx'] + 1) % len(room['players'])
+                room['turn_idx'] = (room['turn_idx'] + 1) % num_p
+                nxt_name = room['players'][room['turn_idx']]['name']
+                room['last_log'] = f"{cur['name']} ({dval}): Goti {tidx+1} chali.{cut_txt} Ab {nxt_name} ki baari!"
             return room
 
     return room

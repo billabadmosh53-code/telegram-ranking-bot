@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 import telebot
+import requests
 from telebot import types, apihelper
 
 # More tolerant Telegram API networking for Render instances
@@ -6075,6 +6076,31 @@ def main():
     threading.Thread(target=health_server, daemon=True, name='health-server').start()
     threading.Thread(target=hourly_cricket_loop, daemon=True, name='cricket-game').start()
     log.info('Mishra Guard Robot V4 started; health server on port %s', PORT)
+
+    # Startup-only diagnostics: distinguish Render outbound networking from polling.
+    try:
+        response = requests.get('https://api.telegram.org', timeout=(10, 15))
+        log.info('NETWORK_DIAG telegram_root_http=%s (HTTP 404 is expected here)', response.status_code)
+    except Exception as diag_error:
+        log.error('NETWORK_DIAG telegram_root_failed=%s: %s',
+                  type(diag_error).__name__, str(diag_error)[:240])
+
+    try:
+        response = requests.get(
+            f'https://api.telegram.org/bot{TOKEN}/getMe',
+            timeout=(10, 15)
+        )
+        try:
+            payload = response.json()
+            log.info('TELEGRAM_AUTH_DIAG http=%s ok=%s',
+                     response.status_code, payload.get('ok'))
+        except Exception:
+            log.error('TELEGRAM_AUTH_DIAG invalid_response_http=%s',
+                      response.status_code)
+    except Exception as diag_error:
+        log.error('TELEGRAM_AUTH_DIAG failed=%s: %s',
+                  type(diag_error).__name__, str(diag_error)[:240])
+
     while True:
         try:
             # Do not make a separate skip-updates request on every reconnect.

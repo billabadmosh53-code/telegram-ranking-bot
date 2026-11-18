@@ -3858,32 +3858,15 @@ def broadcast_cmd(m):
     chat = m.chat.id
     uid = m.from_user.id
 
-    # Strict Owner / Bot Admin Check: Only bot owner (set via OWNER_ID env or specific user id) or chat creators can broadcast globally
-    owner_id_env = os.getenv('OWNER_ID', '').strip()
-    is_owner = False
-    if owner_id_env and str(uid) == owner_id_env:
-        is_owner = True
-    elif not owner_id_env:
-        # Fallback if OWNER_ID not set: allow creator / group admin if in group, or let's check if user is chat creator or bot admin
-        if group(m):
-            try:
-                member = bot.get_chat_member(chat, uid)
-                if member.status in ('creator', 'administrator'):
-                    is_owner = True
-            except Exception:
-                pass
-        else:
-            # In DM, if OWNER_ID is not set, allow or restrict. To be safe, let's check if they are creator of any tracked chat or owner.
-            is_owner = True
-
-    if not is_owner:
-        return bot.reply_to(m, '⛔ <b>Permission Denied!</b> Sirf Bot Owner hi /broadcast command ka use kar sakte hain.')
+    # Restrict broadcast strictly to Bot Private Chat (DM) so group admins cannot spam groups from GC
+    if group(m):
+        return bot.reply_to(m, '⛔ <b>Broadcast Restriction:</b> /broadcast command sirf Bot ke DM (Private Chat) mein use ki ja sakti hai, group chats mein nahi!')
 
     p = (m.text or '').split(maxsplit=1)
     if len(p) < 2 and not m.reply_to_message:
         return bot.reply_to(
             m,
-            "📢 <b>MISHRA ROBOT BROADCAST SYSTEM</b>\n\n"
+            "📢 <b>MISHRA ROBOT BROADCAST SYSTEM (DM ONLY)</b>\n\n"
             "Usage:\n"
             "• <code>/broadcast Your message text here</code>\n"
             "• Or reply to any <b>Photo, Video, Sticker, or GIF</b> with <code>/broadcast [caption or buttons]</code>\n\n"
@@ -3893,8 +3876,11 @@ def broadcast_cmd(m):
         )
 
     raw_content = p[1].strip() if len(p) >= 2 else ''
-    if not raw_content and m.reply_to_message:
-        raw_content = (m.reply_to_message.caption or m.reply_to_message.text or '').strip()
+    reply_r = m.reply_to_message
+    if not raw_content and reply_r:
+        raw_content = (reply_r.caption or reply_r.text or '').strip()
+    elif reply_r and (reply_r.caption or reply_r.text):
+        raw_content = raw_content + "\n" + (reply_r.caption or reply_r.text or '').strip()
 
     btn_lines = []
     main_lines = []
@@ -3924,25 +3910,20 @@ def broadcast_cmd(m):
         )
     )
 
-    reply_r = m.reply_to_message
     media_info = {'type': 'text', 'file_id': '', 'text': msg_body, 'kb': kb, 'chats': chat_ids}
     if reply_r:
         if reply_r.photo:
             media_info['type'] = 'photo'
             media_info['file_id'] = reply_r.photo[-1].file_id
-            media_info['text'] = msg_body or (reply_r.caption or '').strip()
         elif reply_r.video:
             media_info['type'] = 'video'
             media_info['file_id'] = reply_r.video.file_id
-            media_info['text'] = msg_body or (reply_r.caption or '').strip()
         elif reply_r.animation:
             media_info['type'] = 'animation'
             media_info['file_id'] = reply_r.animation.file_id
-            media_info['text'] = msg_body or (reply_r.caption or '').strip()
         elif reply_r.sticker:
             media_info['type'] = 'sticker'
             media_info['file_id'] = reply_r.sticker.file_id
-            media_info['text'] = msg_body
 
     with BROADCAST_LOCK:
         BROADCAST_STATE[uid] = media_info
@@ -4007,7 +3988,7 @@ def broadcast_callback(call):
                         bot.send_sticker(cid, fid)
                         bot.send_message(cid, txt if txt else "📢 <b>Announcement</b>", reply_markup=kb)
                     else:
-                        bot.send_message(cid, cid if not txt else txt, reply_markup=kb) # wait, bot.send_message(cid, txt, reply_markup=kb)
+                        bot.send_message(cid, txt if txt else "📢 <b>Announcement</b>", reply_markup=kb)
                     success += 1
                     time.sleep(0.08)
                 except Exception:

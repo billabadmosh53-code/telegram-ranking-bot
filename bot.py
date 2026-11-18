@@ -3834,6 +3834,243 @@ def save_whisper(sender_id, sender_name, mode, target_key, secret_text):
         c.execute('DELETE FROM whispers WHERE created_at < ?', (time.time() - 7*86400,))
     return wid
 
+# ---------------- BROADCAST SYSTEM (/broadcast or /bc) WITH ALL MEDIA & BUTTON SYNTAX ----------------
+BROADCAST_STATE = {} # admin_uid -> state dict
+BROADCAST_LOCK = threading.Lock()
+
+def parse_inline_buttons(text_lines):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    has_btn = False
+    for line in text_lines:
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        # Support both | and = separator
+        separator = None
+        if '|' in line_clean:
+            separator = '|'
+        elif '=' in line_clean and ('http://' in line_clean or 'https://' in line_clean or 't.me/' in line_clean or 'telegram.me/' in line_clean):
+            separator = '='
+
+        if separator:
+            parts = [p.strip() for p in line_clean.split(separator, 1)]
+            if len(parts) >= 2:
+                btn_name, btn_url = parts[0], parts[1]
+                if btn_url.startswith(('http://', 'https://', 't.me/', 'telegram.me/')):
+                    kb.add(types.InlineKeyboardButton(btn_name, url=btn_url))
+                    has_btn = True
+    return kb if has_btn else None
+
+@bot.message_handler(commands=['broadcast', 'bc'])
+def broadcast_cmd(m):
+    if not m.from_user: return
+    chat = m.chat.id
+    uid = m.from_user.id
+
+    # Restrict broadcast strictly to Bot Private Chat (DM)
+    if group(m):
+        return bot.reply_to(m, '⛔ <b>Broadcast Restriction:</b> /broadcast command sirf Bot ke DM (Private Chat) mein use ki ja sakti hai, group chats mein nahi!')
+
+    # Check OWNER_ID if configured on Render
+    owner_id_env = os.getenv('OWNER_ID', '').strip()
+    if owner_id_env and str(uid) != owner_id_env:
+        return bot.reply_to(
+            m,
+            f"⛔ <b>Access Denied!</b>\n"
+            f"Aapki Telegram User ID (<code>{uid}</code>) Render ke <code>OWNER_ID</code> (<code>{owner_id_env}</code>) se match nahi ho rahi hai.\n"
+            f"Sahi OWNER_ID Render Environment mein set karein."
+        )
+
+    p = (m.text or '').split(maxsplit=1)
+    if len(p) < 2 and not m.reply_to_message:
+        return bot.reply_to(
+            m,
+            "📢 <b>MISHRA ROBOT BROADCAST SYSTEM (DM ONLY)</b>\n\n"
+            "Usage:\n"
+            "• <code>/broadcast Your message text here</code>\n"
+            "• Or reply to any <b>Photo, Video, Sticker, GIF, Audio, Document, Voice, or Video Note</b> with <code>/broadcast [caption or buttons]</code>\n\n"
+            "🔘 <b>Inline Buttons Jodne ka Tareeqa:</b>\n"
+            "Aap message ke aakhir mein buttons aise add kar sakte hain:\n"
+            "<code>Button Name | https://t.me/...</code>\n"
+            "ya\n"
+            "<code>Button Name = https://t.me/...</code>"
+        )
+
+    raw_content = p[1].strip() if len(p) >= 2 else ''
+    reply_r = m.reply_to_message
+    if not raw_content and reply_r:
+        raw_content = (reply_r.caption or reply_r.text or '').strip()
+    elif reply_r and (reply_r.caption or reply_r.text):
+        raw_content = raw_content + "\n" + (reply_r.caption or reply_r.text or '').strip()
+
+    btn_lines = []
+    main_lines = []
+    for line in raw_content.splitlines():
+        line_s = line.strip()
+        if ('|' in line_s or '=' in line_s) and ('http://' in line_s or 'https://' in line_s or 't.me/' in line_s or 'telegram.me/' in line_s):
+            btn_lines.append(line_s)
+        else:
+            main_lines.append(line)
+
+    msg_body = "\n".join(main_lines).strip()
+    kb = parse_inline_buttons(btn_lines)
+
+    with DB_LOCK, connect() as c:
+        chats = c.execute('SELECT DISTINCT chat_id FROM stats').fetchall()
+    chat_ids = [r['chat_id'] for r in chats]
+    if not chat_ids:
+        return bot.reply_to(m, 'No active chats found in database to broadcast.')
+
+    status_msg = bot.reply_to(
+        m,
+        f"📢 <b>Broadcast Ready!</b>\n"
+        f"🎯 Target chats: <b>{len(chat_ids)}</b>\n\n"
+        f"Niche buttons dabakar test karein ya turant bhejein:",
+        reply_markup=types.InlineKeyboardMarkup(row_width=2).add(
+            types.InlineKeyboardButton('🧪 Test Send (To You)', callback_data=f'bc_test:{uid}'),
+            types.InlineKeyboardButton('🚀 Send to All Chats', callback_data=f'bc_send:{uid}')
+        )
+    )
+
+    media_info = {'type': 'text', 'file_id': '', 'text': msg_body, 'kb': kb, 'chats': chat_ids}
+    if reply_r:
+        if reply_r.photo:
+            media_info['type'] = 'photo'
+            media_info['file_id'] = reply_r.photo[-1].file_id
+        elif reply_r.video:
+            media_info['type'] = 'video'
+            media_info['file_id'] = reply_r.video.file_id
+        elif reply_r.animation:
+            media_info['type'] = 'animation'
+            media_info['file_id'] = reply_r.animation.file_id
+        elif reply_r.sticker:
+            media_info['type'] = 'sticker'
+            media_info['file_id'] = reply_r.sticker.file_id
+        elif reply_r.audio:
+            media_info['type'] = 'audio'
+            media_info['file_id'] = reply_r.audio.file_id
+        elif reply_r.document:
+            media_info['type'] = 'document'
+            media_info['file_id'] = reply_r.document.file_id
+        elif reply_r.voice:
+            media_info['type'] = 'voice'
+            media_info['file_id'] = reply_r.voice.file_id
+        elif reply_r.video_note:
+            media_info['type'] = 'video_note'
+            media_info['file_id'] = reply_r.video_note.file_id
+
+    with BROADCAST_LOCK:
+        BROADCAST_STATE[uid] = media_info
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and (call.data.startswith('bc_test:') or call.data.startswith('bc_send:')))
+def broadcast_callback(call):
+    parts = call.data.split(':')
+    action = parts[0]
+    admin_uid = int(parts[1])
+    if call.from_user.id != admin_uid:
+        return bot.answer_callback_query(call.id, '⛔ Yeh broadcast aapne initiate nahi kiya hai!', show_alert=True)
+
+    with BROADCAST_LOCK:
+        info = BROADCAST_STATE.get(admin_uid)
+    if not info:
+        return bot.answer_callback_query(call.id, '⚠️ Broadcast session expire ho gaya. Dobara /broadcast bhejein.', show_alert=True)
+
+    if action == 'bc_test':
+        bot.answer_callback_query(call.id, '🧪 Sending test message to you...')
+        try:
+            mtype = info['type']
+            fid = info['file_id']
+            txt = info['text']
+            kb = info['kb']
+            uid_target = call.from_user.id
+            if mtype == 'photo' and fid:
+                bot.send_photo(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'video' and fid:
+                bot.send_video(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'animation' and fid:
+                bot.send_animation(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'sticker' and fid:
+                bot.send_sticker(uid_target, fid)
+                bot.send_message(uid_target, f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "<b>[TEST BROADCAST]</b>", reply_markup=kb)
+            elif mtype == 'audio' and fid:
+                bot.send_audio(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'document' and fid:
+                bot.send_document(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'voice' and fid:
+                bot.send_voice(uid_target, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
+            elif mtype == 'video_note' and fid:
+                bot.send_video_note(uid_target, fid)
+                if txt: bot.send_message(uid_target, f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+            else:
+                bot.send_message(uid_target, f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "<b>[TEST BROADCAST]</b>", reply_markup=kb)
+        except Exception as e:
+            bot.send_message(call.from_user.id, f"❌ Test send failed: {esc(e)}")
+        return
+
+    if action == 'bc_send':
+        bot.answer_callback_query(call.id, '🚀 Broadcast started in background!')
+        try:
+            bot.edit_message_text('🚀 <b>Broadcast in progress...</b> chats ko bheja ja raha hai.', call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+
+        def run_broadcast():
+            success, failed = 0, 0
+            mtype = info['type']
+            fid = info['file_id']
+            txt = info['text']
+            kb = info['kb']
+            for cid in info['chats']:
+                try:
+                    if mtype == 'photo' and fid:
+                        bot.send_photo(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'video' and fid:
+                        bot.send_video(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'animation' and fid:
+                        bot.send_animation(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'sticker' and fid:
+                        bot.send_sticker(cid, fid)
+                        if txt or kb:
+                            bot.send_message(cid, txt if txt else "📢 <b>Announcement</b>", reply_markup=kb)
+                    elif mtype == 'audio' and fid:
+                        bot.send_audio(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'document' and fid:
+                        bot.send_document(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'voice' and fid:
+                        bot.send_voice(cid, fid, caption=txt if txt else None, reply_markup=kb)
+                    elif mtype == 'video_note' and fid:
+                        bot.send_video_note(cid, fid)
+                        if txt: bot.send_message(cid, txt, reply_markup=kb)
+                    else:
+                        bot.send_message(cid, txt if txt else "📢 <b>Announcement</b>", reply_markup=kb)
+                    success += 1
+                    time.sleep(0.08)
+                except Exception as ex:
+                    # Handle FloodWait or blocked bot gracefully
+                    err_s = str(ex).lower()
+                    if 'flood' in err_s:
+                        try:
+                            # Extract sleep time if possible or sleep 5s
+                            time.sleep(5)
+                        except Exception:
+                            pass
+                    failed += 1
+            try:
+                bot.send_message(call.message.chat.id, f"✅ <b>Broadcast Complete!</b>\nSuccessful: <b>{success}</b> chats\nFailed: <b>{failed}</b> chats")
+            except Exception:
+                pass
+
+        threading.Thread(target=run_broadcast, daemon=True).start()
+
+# ---------------- SECRET WHISPER SYSTEM (INLINE + BUTTONS + 3 MODES) ----------------
+def save_whisper(sender_id, sender_name, mode, target_key, secret_text):
+    wid = uuid.uuid4().hex[:10]
+    with DB_LOCK, connect() as c:
+        c.execute('INSERT INTO whispers VALUES(?,?,?,?,?,?)',
+                  (wid, sender_id, sender_name, f'{mode}:{target_key}', secret_text[:190], time.time()))
+        c.execute('DELETE FROM whispers WHERE created_at < ?', (time.time() - 7*86400,))
+    return wid
+
 # ---------------- BROADCAST SYSTEM (/broadcast or /bc) WITH MEDIA & INLINE BUTTONS ----------------
 BROADCAST_STATE = {} # admin_uid -> state dict
 BROADCAST_LOCK = threading.Lock()

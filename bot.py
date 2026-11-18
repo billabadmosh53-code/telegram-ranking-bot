@@ -9,7 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 import telebot
-from telebot import types
+from telebot import types, apihelper
+
+# More tolerant Telegram API networking for Render instances
+apihelper.CONNECT_TIMEOUT = 30
+apihelper.READ_TIMEOUT = 90
+apihelper.RETRY_ON_ERROR = True
 from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = os.getenv('BOT_TOKEN', '').strip()
@@ -6072,7 +6077,8 @@ def main():
     log.info('Mishra Guard Robot V4 started; health server on port %s', PORT)
     while True:
         try:
-            bot.infinity_polling(skip_pending=True)
+            # Do not make a separate skip-updates request on every reconnect.
+            bot.infinity_polling(skip_pending=False, timeout=30, long_polling_timeout=30)
         except Exception as e:
             log.exception('Polling stopped')
             message = str(e).lower()
@@ -6080,7 +6086,7 @@ def main():
                 log.critical('Telegram reports another polling session for this token. Stop other Render instances/services; not retrying in a tight loop.')
                 time.sleep(30)
             else:
-                time.sleep(5)
+                time.sleep(10)
 
 if __name__ == '__main__':
     main()

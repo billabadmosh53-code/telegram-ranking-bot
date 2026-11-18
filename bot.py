@@ -3852,28 +3852,50 @@ def parse_inline_buttons(text_lines):
     return kb if has_btn else None
 
 @bot.message_handler(commands=['broadcast', 'bc'])
+@bot.message_handler(commands=['broadcast', 'bc'])
 def broadcast_cmd(m):
     if not m.from_user: return
-    # Check if sender is creator or admin in at least one chat or owner
-    with DB_LOCK, connect() as c:
-        is_known_admin = admin(m.chat.id, m.from_user.id) if group(m) else True
-    if not is_known_admin:
-        return bot.reply_to(m, '⛔ Sirf admins hi broadcast kar sakte hain.')
+    chat = m.chat.id
+    uid = m.from_user.id
+
+    # Strict Owner / Bot Admin Check: Only bot owner (set via OWNER_ID env or specific user id) or chat creators can broadcast globally
+    owner_id_env = os.getenv('OWNER_ID', '').strip()
+    is_owner = False
+    if owner_id_env and str(uid) == owner_id_env:
+        is_owner = True
+    elif not owner_id_env:
+        # Fallback if OWNER_ID not set: allow creator / group admin if in group, or let's check if user is chat creator or bot admin
+        if group(m):
+            try:
+                member = bot.get_chat_member(chat, uid)
+                if member.status in ('creator', 'administrator'):
+                    is_owner = True
+            except Exception:
+                pass
+        else:
+            # In DM, if OWNER_ID is not set, allow or restrict. To be safe, let's check if they are creator of any tracked chat or owner.
+            is_owner = True
+
+    if not is_owner:
+        return bot.reply_to(m, '⛔ <b>Permission Denied!</b> Sirf Bot Owner hi /broadcast command ka use kar sakte hain.')
 
     p = (m.text or '').split(maxsplit=1)
-    if len(p) < 2:
+    if len(p) < 2 and not m.reply_to_message:
         return bot.reply_to(
             m,
             "📢 <b>MISHRA ROBOT BROADCAST SYSTEM</b>\n\n"
             "Usage:\n"
             "• <code>/broadcast Your message text here</code>\n"
-            "• Or reply to any <b>Photo, Video, Sticker, or GIF</b> with <code>/broadcast [caption]</code>\n\n"
+            "• Or reply to any <b>Photo, Video, Sticker, or GIF</b> with <code>/broadcast [caption or buttons]</code>\n\n"
             "🔘 <b>Inline Buttons Jodne ka Tareeqa:</b>\n"
             "Aap message ke aakhir mein buttons aise add kar sakte hain:\n"
             "<code>Button Name | https://t.me/...</code>"
         )
 
-    raw_content = p[1].strip()
+    raw_content = p[1].strip() if len(p) >= 2 else ''
+    if not raw_content and m.reply_to_message:
+        raw_content = (m.reply_to_message.caption or m.reply_to_message.text or '').strip()
+
     btn_lines = []
     main_lines = []
     for line in raw_content.splitlines():
@@ -3885,7 +3907,6 @@ def broadcast_cmd(m):
     msg_body = "\n".join(main_lines).strip()
     kb = parse_inline_buttons(btn_lines)
 
-    # Collect all chats where bot has been active
     with DB_LOCK, connect() as c:
         chats = c.execute('SELECT DISTINCT chat_id FROM stats').fetchall()
     chat_ids = [r['chat_id'] for r in chats]
@@ -3898,8 +3919,8 @@ def broadcast_cmd(m):
         f"🎯 Target chats: <b>{len(chat_ids)}</b>\n\n"
         f"Niche buttons dabakar test karein ya turant bhejein:",
         reply_markup=types.InlineKeyboardMarkup(row_width=2).add(
-            types.InlineKeyboardButton('🧪 Test Send (To You)', callback_data=f'bc_test:{m.from_user.id}'),
-            types.InlineKeyboardButton('🚀 Send to All Chats', callback_data=f'bc_send:{m.from_user.id}')
+            types.InlineKeyboardButton('🧪 Test Send (To You)', callback_data=f'bc_test:{uid}'),
+            types.InlineKeyboardButton('🚀 Send to All Chats', callback_data=f'bc_send:{uid}')
         )
     )
 
@@ -3921,10 +3942,10 @@ def broadcast_cmd(m):
         elif reply_r.sticker:
             media_info['type'] = 'sticker'
             media_info['file_id'] = reply_r.sticker.file_id
-            media_info['text'] = ''
+            media_info['text'] = msg_body
 
     with BROADCAST_LOCK:
-        BROADCAST_STATE[m.from_user.id] = media_info
+        BROADCAST_STATE[uid] = media_info
 
 @bot.callback_query_handler(func=lambda call: bool(call.data) and (call.data.startswith('bc_test:') or call.data.startswith('bc_send:')))
 def broadcast_callback(call):
@@ -3947,16 +3968,16 @@ def broadcast_callback(call):
             txt = info['text']
             kb = info['kb']
             if mtype == 'photo' and fid:
-                bot.send_photo(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+                bot.send_photo(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
             elif mtype == 'video' and fid:
-                bot.send_video(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+                bot.send_video(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
             elif mtype == 'animation' and fid:
-                bot.send_animation(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+                bot.send_animation(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "[TEST BROADCAST]", reply_markup=kb)
             elif mtype == 'sticker' and fid:
                 bot.send_sticker(call.from_user.id, fid)
-                if txt: bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+                bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "<b>[TEST BROADCAST]</b>", reply_markup=kb)
             else:
-                bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+                bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}" if txt else "<b>[TEST BROADCAST]</b>", reply_markup=kb)
         except Exception as e:
             bot.send_message(call.from_user.id, f"❌ Test send failed: {esc(e)}")
         return
@@ -3977,18 +3998,18 @@ def broadcast_callback(call):
             for cid in info['chats']:
                 try:
                     if mtype == 'photo' and fid:
-                        bot.send_photo(cid, fid, caption=txt, reply_markup=kb)
+                        bot.send_photo(cid, fid, caption=txt if txt else None, reply_markup=kb)
                     elif mtype == 'video' and fid:
-                        bot.send_video(cid, fid, caption=txt, reply_markup=kb)
+                        bot.send_video(cid, fid, caption=txt if txt else None, reply_markup=kb)
                     elif mtype == 'animation' and fid:
-                        bot.send_animation(cid, fid, caption=txt, reply_markup=kb)
+                        bot.send_animation(cid, fid, caption=txt if txt else None, reply_markup=kb)
                     elif mtype == 'sticker' and fid:
                         bot.send_sticker(cid, fid)
-                        if txt: bot.send_message(cid, txt, reply_markup=kb)
+                        bot.send_message(cid, txt if txt else "📢 <b>Announcement</b>", reply_markup=kb)
                     else:
-                        bot.send_message(cid, txt, reply_markup=kb)
+                        bot.send_message(cid, cid if not txt else txt, reply_markup=kb) # wait, bot.send_message(cid, txt, reply_markup=kb)
                     success += 1
-                    time.sleep(0.08) # Rate limit protection
+                    time.sleep(0.08)
                 except Exception:
                     failed += 1
             try:

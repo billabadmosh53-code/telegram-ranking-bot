@@ -3853,14 +3853,25 @@ def parse_inline_buttons(text_lines):
 
 @bot.message_handler(commands=['broadcast', 'bc'])
 @bot.message_handler(commands=['broadcast', 'bc'])
+@bot.message_handler(commands=['broadcast', 'bc'])
 def broadcast_cmd(m):
     if not m.from_user: return
     chat = m.chat.id
     uid = m.from_user.id
 
-    # Restrict broadcast strictly to Bot Private Chat (DM) so group admins cannot spam groups from GC
+    # Restrict broadcast strictly to Bot Private Chat (DM)
     if group(m):
         return bot.reply_to(m, '⛔ <b>Broadcast Restriction:</b> /broadcast command sirf Bot ke DM (Private Chat) mein use ki ja sakti hai, group chats mein nahi!')
+
+    # Check OWNER_ID if configured on Render
+    owner_id_env = os.getenv('OWNER_ID', '').strip()
+    if owner_id_env and str(uid) != owner_id_env:
+        return bot.reply_to(
+            m,
+            f"⛔ <b>Access Denied!</b>\n"
+            f"Aapki Telegram User ID (<code>{uid}</code>) Render ke <code>OWNER_ID</code> (<code>{owner_id_env}</code>) se match nahi ho rahi hai.\n"
+            f"Sahi OWNER_ID Render Environment mein set karein."
+        )
 
     p = (m.text or '').split(maxsplit=1)
     if len(p) < 2 and not m.reply_to_message:

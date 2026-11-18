@@ -3730,7 +3730,7 @@ def download_media(m):
         bot.reply_to(m, 'ℹ️ Is build mein Instagram Reels aur Pinterest Pins supported hain. Private/login-protected media download nahi hoga.')
 
 
-@bot.message_handler(func=lambda m: not group(m) and bool(m.text), content_types=['text'])
+@bot.message_handler(func=lambda m: not group(m) and bool(m.text) and not (m.text or '').lstrip().startswith('/'), content_types=['text'])
 def pm_auto_download(m):
     body = (m.text or '').strip()
     insta = INSTA_VIDEO_RE.search(body)

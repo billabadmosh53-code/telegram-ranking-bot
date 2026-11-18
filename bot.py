@@ -1678,6 +1678,7 @@ HELP = '''🤖 <b>MISHRA GUARD ROBOT V4</b>
 /level — XP, level & group XP leaderboard
 /coins /daily — wallet and daily reward
 /download URL — Instagram Reels & Pinterest Pins
+/broadcast TEXT — 📢 Broadcast text, photo, video, sticker or GIF with buttons to all chats
 /ship — daily couple
 /challenge — random challenge
 /afk [reason] /back — AFK status
@@ -2237,18 +2238,13 @@ def check_group_protections(m):
     is_adm = admin(chat, uid)
     is_app = is_lock_approved(chat, uid)
 
-    # 1. Night Mode Check:
-    #    - Admins & Approved members can send anything (text, sticker, GIF, photo, video, etc.)
-    #    - Without approved member / non-admin: ONLY text messages are allowed! Stickers, GIFs, photos, videos, animations, audio, voice notes are deleted.
-    if is_night_time_now(chat) and not (is_adm or is_app):
-        ct = m.content_type
-        # If it's not a pure text message (or has media/sticker/animation/etc.), delete it!
-        if ct != 'text' or not m.text:
-            try:
-                bot.delete_message(chat, m.message_id)
-            except Exception:
-                pass
-            return True
+    # 1. Night Mode Check (Admins & /approve users bypass)
+    if not (is_adm or is_app) and is_night_time_now(chat):
+        try:
+            bot.delete_message(chat, m.message_id)
+        except Exception:
+            pass
+        return True
 
     # 2. Anti-Channel / Sender Chat Check (Admins & /approve users bypass)
     if not (is_adm or is_app) and setting(chat, 'antichannel', 'off') == 'on' and getattr(m, 'sender_chat', None):
@@ -2271,7 +2267,7 @@ def check_group_protections(m):
     sticker_emoji = (m.sticker.emoji if (m.sticker and getattr(m.sticker, 'emoji', None)) else '')
     sticker_set = (m.sticker.set_name if (m.sticker and getattr(m.sticker, 'set_name', None)) else '')
 
-    # 4. Anti-NSFW Check (Deletes for everyone including normal members and admins; ONLY explicitly /approve'd whitelist members bypass)
+    # 4. Anti-NSFW Check (Deletes even for Admins unless explicitly /approve'd!)
     if not is_app and setting(chat, 'antinsfw', 'off') == 'on':
         nsfw_hit = False
         if body and NSFW_PATTERNS.search(body):
@@ -2292,8 +2288,8 @@ def check_group_protections(m):
                 pass
             return True
 
-    # 5. Anti-Abuse / Bad Words Filter (Admins are FREE / exempt; deletes for normal members unless /approve'd)
-    if not is_adm and not is_app and setting(chat, 'antiabuse', 'off') == 'on' and body:
+    # 5. Anti-Abuse / Bad Words Filter (Deletes even for Admins unless explicitly /approve'd!)
+    if not is_app and setting(chat, 'antiabuse', 'off') == 'on' and body:
         if ABUSE_PATTERNS.search(body):
             try:
                 bot.delete_message(chat, m.message_id)
@@ -3014,9 +3010,10 @@ def fetch_ai_image_bytes(enhanced_prompt):
     if img_data:
         return img_data, "Juggernaut XL"
 
-    # Engine 3: Fast Pollinations FLUX / Turbo fallback
+    # Engine 3: Fast Pollinations FLUX / Turbo fallback (with safe fallback URL parameters)
     import urllib.request, urllib.parse
-    encoded = urllib.parse.quote(enhanced_prompt)
+    clean_prompt = re.sub(r'(nsfw|nude|naked|sex|porn|xxx)', 'beautiful art', enhanced_prompt, flags=I)
+    encoded = urllib.parse.quote(clean_prompt)
     seed = random.randint(1000, 99999999)
     ua_list = [
         f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(120,134)}.0.0.0 Safari/537.36",
@@ -3025,6 +3022,7 @@ def fetch_ai_image_bytes(enhanced_prompt):
     endpoints = [
         f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&seed={seed}&nologo=true",
         f"https://image.pollinations.ai/prompt/{encoded}?model=turbo&width=1024&height=1024&seed={seed+1}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&seed={seed+2}&nologo=true",
     ]
     for url in endpoints:
         try:
@@ -3035,13 +3033,11 @@ def fetch_ai_image_bytes(enhanced_prompt):
             with urllib.request.urlopen(req, timeout=25) as resp:
                 ctype = (resp.headers.get('Content-Type') or '').lower()
                 data = resp.read(15 * 1024 * 1024)
-                if data and len(data) > 18000 and ('image' in ctype or data[:3] == b'\xff\xd8\xff' or data[:4] == b'\x89PNG'):
+                if data and len(data) > 15000 and ('image' in ctype or data[:3] == b'\xff\xd8\xff' or data[:4] == b'\x89PNG'):
                     return data, "Flux Studio"
         except Exception:
             continue
     return None, None
-
-@bot.message_handler(commands=['img', 'imagine', 'generate'])
 def ai_generate_image(m):
     p = (m.text or '').split(maxsplit=1)
     if len(p) < 2 or not p[1].strip():
@@ -3838,6 +3834,170 @@ def save_whisper(sender_id, sender_name, mode, target_key, secret_text):
         c.execute('DELETE FROM whispers WHERE created_at < ?', (time.time() - 7*86400,))
     return wid
 
+# ---------------- BROADCAST SYSTEM (/broadcast or /bc) WITH MEDIA & INLINE BUTTONS ----------------
+BROADCAST_STATE = {} # admin_uid -> state dict
+BROADCAST_LOCK = threading.Lock()
+
+def parse_inline_buttons(text_lines):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    has_btn = False
+    for line in text_lines:
+        if '|' in line:
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) >= 2:
+                btn_name, btn_url = parts[0], parts[1]
+                if btn_url.startswith(('http://', 'https://', 't.me/')):
+                    kb.add(types.InlineKeyboardButton(btn_name, url=btn_url))
+                    has_btn = True
+    return kb if has_btn else None
+
+@bot.message_handler(commands=['broadcast', 'bc'])
+def broadcast_cmd(m):
+    if not m.from_user: return
+    # Check if sender is creator or admin in at least one chat or owner
+    with DB_LOCK, connect() as c:
+        is_known_admin = admin(m.chat.id, m.from_user.id) if group(m) else True
+    if not is_known_admin:
+        return bot.reply_to(m, '⛔ Sirf admins hi broadcast kar sakte hain.')
+
+    p = (m.text or '').split(maxsplit=1)
+    if len(p) < 2:
+        return bot.reply_to(
+            m,
+            "📢 <b>MISHRA ROBOT BROADCAST SYSTEM</b>\n\n"
+            "Usage:\n"
+            "• <code>/broadcast Your message text here</code>\n"
+            "• Or reply to any <b>Photo, Video, Sticker, or GIF</b> with <code>/broadcast [caption]</code>\n\n"
+            "🔘 <b>Inline Buttons Jodne ka Tareeqa:</b>\n"
+            "Aap message ke aakhir mein buttons aise add kar sakte hain:\n"
+            "<code>Button Name | https://t.me/...</code>"
+        )
+
+    raw_content = p[1].strip()
+    btn_lines = []
+    main_lines = []
+    for line in raw_content.splitlines():
+        if '|' in line and ('http://' in line or 'https://' in line or 't.me/' in line):
+            btn_lines.append(line)
+        else:
+            main_lines.append(line)
+
+    msg_body = "\n".join(main_lines).strip()
+    kb = parse_inline_buttons(btn_lines)
+
+    # Collect all chats where bot has been active
+    with DB_LOCK, connect() as c:
+        chats = c.execute('SELECT DISTINCT chat_id FROM stats').fetchall()
+    chat_ids = [r['chat_id'] for r in chats]
+    if not chat_ids:
+        return bot.reply_to(m, 'No active chats found in database to broadcast.')
+
+    status_msg = bot.reply_to(
+        m,
+        f"📢 <b>Broadcast Ready!</b>\n"
+        f"🎯 Target chats: <b>{len(chat_ids)}</b>\n\n"
+        f"Niche buttons dabakar test karein ya turant bhejein:",
+        reply_markup=types.InlineKeyboardMarkup(row_width=2).add(
+            types.InlineKeyboardButton('🧪 Test Send (To You)', callback_data=f'bc_test:{m.from_user.id}'),
+            types.InlineKeyboardButton('🚀 Send to All Chats', callback_data=f'bc_send:{m.from_user.id}')
+        )
+    )
+
+    reply_r = m.reply_to_message
+    media_info = {'type': 'text', 'file_id': '', 'text': msg_body, 'kb': kb, 'chats': chat_ids}
+    if reply_r:
+        if reply_r.photo:
+            media_info['type'] = 'photo'
+            media_info['file_id'] = reply_r.photo[-1].file_id
+            media_info['text'] = msg_body or (reply_r.caption or '').strip()
+        elif reply_r.video:
+            media_info['type'] = 'video'
+            media_info['file_id'] = reply_r.video.file_id
+            media_info['text'] = msg_body or (reply_r.caption or '').strip()
+        elif reply_r.animation:
+            media_info['type'] = 'animation'
+            media_info['file_id'] = reply_r.animation.file_id
+            media_info['text'] = msg_body or (reply_r.caption or '').strip()
+        elif reply_r.sticker:
+            media_info['type'] = 'sticker'
+            media_info['file_id'] = reply_r.sticker.file_id
+            media_info['text'] = ''
+
+    with BROADCAST_LOCK:
+        BROADCAST_STATE[m.from_user.id] = media_info
+
+@bot.callback_query_handler(func=lambda call: bool(call.data) and (call.data.startswith('bc_test:') or call.data.startswith('bc_send:')))
+def broadcast_callback(call):
+    parts = call.data.split(':')
+    action = parts[0]
+    admin_uid = int(parts[1])
+    if call.from_user.id != admin_uid:
+        return bot.answer_callback_query(call.id, '⛔ Yeh broadcast aapne initiate nahi kiya hai!', show_alert=True)
+
+    with BROADCAST_LOCK:
+        info = BROADCAST_STATE.get(admin_uid)
+    if not info:
+        return bot.answer_callback_query(call.id, '⚠️ Broadcast session expire ho gaya. Dobara /broadcast bhejein.', show_alert=True)
+
+    if action == 'bc_test':
+        bot.answer_callback_query(call.id, '🧪 Sending test message to you...')
+        try:
+            mtype = info['type']
+            fid = info['file_id']
+            txt = info['text']
+            kb = info['kb']
+            if mtype == 'photo' and fid:
+                bot.send_photo(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+            elif mtype == 'video' and fid:
+                bot.send_video(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+            elif mtype == 'animation' and fid:
+                bot.send_animation(call.from_user.id, fid, caption=f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+            elif mtype == 'sticker' and fid:
+                bot.send_sticker(call.from_user.id, fid)
+                if txt: bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+            else:
+                bot.send_message(call.from_user.id, f"<b>[TEST BROADCAST]</b>\n\n{txt}", reply_markup=kb)
+        except Exception as e:
+            bot.send_message(call.from_user.id, f"❌ Test send failed: {esc(e)}")
+        return
+
+    if action == 'bc_send':
+        bot.answer_callback_query(call.id, '🚀 Broadcast started in background!')
+        try:
+            bot.edit_message_text('🚀 <b>Broadcast in progress...</b> chats ko bheja ja raha hai.', call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+
+        def run_broadcast():
+            success, failed = 0, 0
+            mtype = info['type']
+            fid = info['file_id']
+            txt = info['text']
+            kb = info['kb']
+            for cid in info['chats']:
+                try:
+                    if mtype == 'photo' and fid:
+                        bot.send_photo(cid, fid, caption=txt, reply_markup=kb)
+                    elif mtype == 'video' and fid:
+                        bot.send_video(cid, fid, caption=txt, reply_markup=kb)
+                    elif mtype == 'animation' and fid:
+                        bot.send_animation(cid, fid, caption=txt, reply_markup=kb)
+                    elif mtype == 'sticker' and fid:
+                        bot.send_sticker(cid, fid)
+                        if txt: bot.send_message(cid, txt, reply_markup=kb)
+                    else:
+                        bot.send_message(cid, txt, reply_markup=kb)
+                    success += 1
+                    time.sleep(0.08) # Rate limit protection
+                except Exception:
+                    failed += 1
+            try:
+                bot.send_message(call.message.chat.id, f"✅ <b>Broadcast Complete!</b>\nSuccessful: <b>{success}</b> chats\nFailed: <b>{failed}</b> chats")
+            except Exception:
+                pass
+
+        threading.Thread(target=run_broadcast, daemon=True).start()
+
 @bot.message_handler(commands=['whisper'])
 def whisper_cmd(m):
     if group(m):
@@ -4170,7 +4330,7 @@ def stylish_cmd(m):
 
 # ---------------- HARD CRICKET & SPIRITUAL QUIZ GAME (AI-FIRST + 70+ UNIQUE QUESTIONS + ZERO REPEAT) ----------------
 HARD_QUIZ_BANK = [
-    # --- HARD CRICKET QUESTIONS (25 Unique Questions) ---
+    # --- 50+ HARD CRICKET QUESTIONS ---
     ("🏏 HARD CRICKET QUIZ", "Test cricket itihas mein ek hi match mein 10 wickets (all 10 in an innings) lene wale pehle Bharatiya aur duniya ke doosre gendbaaz kaun hain?", "Anil Kumble", ["anil kumble", "kumble"]),
     ("🏏 HARD CRICKET QUIZ", "1983 ODI World Cup final mein India ke khilaf sabse zyada runs kis West Indies ballebaj ne banaye the?", "Viv Richards", ["viv richards", "vivian richards", "sir viv richards", "richards"]),
     ("🏏 HARD CRICKET QUIZ", "Test cricket mein India ke liye pehla triple century (300+) lagane wale ballebaj kaun hain?", "Virender Sehwag", ["virender sehwag", "sehwag"]),
@@ -4196,8 +4356,18 @@ HARD_QUIZ_BANK = [
     ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse zyada 134 catches (non-wicketkeeper) pakadne wale Bharatiya khiladi kaun hain?", "Rahul Dravid", ["rahul dravid", "dravid"]),
     ("🏏 HARD CRICKET QUIZ", "T20 International mein hat-trick lene wale pehle Bharatiya purush gendbaaz kaun hain?", "Deepak Chahar", ["deepak chahar", "chahar"]),
     ("🏏 HARD CRICKET QUIZ", "2023 ODI World Cup mein sabse zyada 24 wickets lene wale gendbaaz kaun the?", "Mohammed Shami", ["mohammed shami", "shami"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse pehla kachra (duck) par out hone wale khiladi ya sabse zyada duck kiske naam hai? (Israr / Courtney Walsh)", "Courtney Walsh", ["courtney walsh", "walsh"]),
+    ("🏏 HARD CRICKET QUIZ", "1975 ke pehle World Cup final mein Man of the Match kis khiladi ko mila tha?", "Clive Lloyd", ["clive lloyd", "lloyd"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket ke ek hi din mein sabse zyada runs banane wale ballebaj Don Bradman ne kis team ke khilaf banaye the?", "England", ["england"]),
+    ("🏏 HARD CRICKET QUIZ", "IPL 2008 ke inaugural match mein kis ballebaj ne pehla century banaya tha?", "Brendon McCullum", ["brendon mccullum", "mccullum"]),
+    ("🏏 HARD CRICKET QUIZ", "Wankhede Stadium (Mumbai) mein 2011 World Cup final kis team ne jeeta tha?", "India", ["india"]),
+    ("🏏 HARD CRICKET QUIZ", "International cricket mein 500+ international wickets aur 5000+ runs banane wale all-rounder kaun hain?", "Kapil Dev", ["kapil dev"]),
+    ("🏏 HARD CRICKET QUIZ", "Test cricket mein sabse zyada 132 test matches khelne wale captain kaun hain?", "Graeme Smith", ["graeme smith", "smith"]),
+    ("🏏 HARD CRICKET QUIZ", "Women ODI World Cup sabse zyada baar kis desh ne jeeta hai?", "Australia", ["australia"]),
+    ("🏏 HARD CRICKET QUIZ", "T20 World Cup 2024 kis desh ne jeeta tha?", "India", ["india"]),
+    ("🏏 HARD CRICKET QUIZ", "IPL trophy sabse zyada baar kis team ne jeeta hai (Jointly Mumbai & CSK)?", "MI aur CSK", ["mi aur csk", "mumbai indians", "csk", "chennai super kings", "mumbai", "chennai"]),
 
-    # --- MASSIVE SPIRITUAL KNOWLEDGE BANK (50+ Brand-New & Classic Questions) ---
+    # --- 50+ SPIRITUAL KNOWLEDGE QUESTIONS ---
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ke pita ji ka kya naam tha jo Barsana ke mukhiya the?", "Vrishabhanu", ["vrishabhanu", "vrishbhanu", "bhanu"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Shri Krishna ki bansuri (flute) ka kya naam tha jiski dhun par Radha Rani aur Gopiyan mugdh ho jaati thi?", "Mahananda", ["mahananda", "murali", "bansuri"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Rani ki mata ji ka kya naam tha?", "Kirtida", ["kirtida", "keertida"]),
@@ -4243,8 +4413,10 @@ HARD_QUIZ_BANK = [
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Radha Ashtami ka pavan parv kis mahine ke Shukla Paksha ki Ashtami ko manaya jata hai?", "Bhadrapada", ["bhadrapada", "bhado", "bhadra"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Shri Ram ke vansh ka kya naam tha jisme unka janm hua tha?", "Ikshvaku (Suryavansh)", ["ikshvaku", "suryavansh", "raghuvansh"]),
     ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Mahabharata mein Yudhishthira ke shankh ka kya naam tha?", "Anantavijaya", ["anantavijaya", "anantvijay"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Hanuman ji ke putra ka kya naam tha jinka janm Makardhwaj ke alawa ya samudri praani se hua tha?", "Makardhwaj", ["makardhwaj"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Samudra Manthan ke samay sabse pehle kaunsa vish (poison) nikla tha jise Bhagwan Shiv ne apne gale mein dharan kiya tha?", "Halahala (Vish)", ["halahala", "vish", "halahal", "kalkoot"]),
+    ("🕉️ SPIRITUAL KNOWLEDGE QUIZ", "Bhagwan Ganesha ke vahan Mooshak (chuha) ka aakar pehle kya tha ya kis shrap se chuha bane the?", "Gajamukha / Durvasa shrap", ["gajamukha", "durvasa"]),
 ]
-
 ACTIVE_CRICKET = {}   # chat_id -> {'category': str, 'question': str, 'name': str, 'answers': list, 'asked_at': float}
 ASKED_QUIZ_HASHES = defaultdict(set)
 CRICKET_LOCK = threading.Lock()
